@@ -61,6 +61,10 @@ export function ShopShell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-30 border-b border-border bg-surface/95 backdrop-blur">
         <div className="mx-auto flex h-16 w-full max-w-[1200px] items-center gap-2 px-4 sm:px-6">
           <Logo href="/" />
+          {/* 실제 운영 서비스가 아님을 명확히 알린다 */}
+          <span className="hidden shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground sm:inline-block">
+            프로토타입 데모
+          </span>
 
           {/* 데스크톱 메뉴 */}
           <nav className="ml-8 hidden items-center gap-1 lg:flex">
