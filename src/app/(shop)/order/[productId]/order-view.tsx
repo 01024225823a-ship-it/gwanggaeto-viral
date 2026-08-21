@@ -18,11 +18,13 @@ import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
 import { FilePicker } from "@/components/common/file-picker";
 import { OrderSteps } from "@/components/customer/order-steps";
+import { ExternalUrl } from "@/components/order/order-detail-parts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { CATEGORY_ICONS, DEFAULT_CATEGORY_ICON } from "@/config/category-icons";
+import { orderFormCopy } from "@/lib/domain/order-form";
 import { findCategory, findProduct } from "@/lib/domain/selectors";
 import type { AttachedFile, Order, Product } from "@/lib/domain/types";
 import { formatNumber, formatPoint, formatWon } from "@/lib/format";
@@ -61,8 +63,13 @@ export function CustomerOrderView({ productId }: { productId: string }) {
     );
   }
 
+  // 카테고리별 주문정보 입력 문구 (유튜브는 롱폼 URL 전용 폼)
+  const form = orderFormCopy(data, product);
+
   if (completed) {
-    return <OrderComplete order={completed} unitLabel={product.unitLabel} />;
+    return (
+      <OrderComplete order={completed} unitLabel={product.unitLabel} urlLabel={form.urlLabel} />
+    );
   }
 
   // 비로그인 사용자도 상품 정보는 볼 수 있고, 주문 단계만 로그인을 요구한다
@@ -83,8 +90,8 @@ export function CustomerOrderView({ productId }: { productId: string }) {
         ok: false,
         message: `최대 ${formatNumber(product.maxQty)}${product.unitLabel}까지 주문할 수 있어요`,
       };
-    if (product.requiresUrl && !targetUrl.trim())
-      return { ok: false, message: "작업할 주소(URL)를 입력해 주세요" };
+    if (form.urlRequired && !targetUrl.trim())
+      return { ok: false, message: form.urlMissingMessage };
     if (shortage > 0) return { ok: false, message: `포인트가 ${formatPoint(shortage)} 부족해요` };
     return { ok: true, message: "" };
   })();
@@ -162,21 +169,22 @@ export function CustomerOrderView({ productId }: { productId: string }) {
               <span className="num mr-1.5 text-primary">02</span>주문정보 입력
             </h2>
 
-            {product.requiresUrl && (
+            {form.showUrl && (
               <div className="flex flex-col gap-2">
                 <Label htmlFor="targetUrl" className="text-[13px]">
-                  작업 URL <span className="text-destructive">*</span>
+                  {form.urlLabel}
+                  {form.urlRequired && <span className="text-destructive"> *</span>}
                 </Label>
                 <Input
                   id="targetUrl"
+                  type="url"
+                  inputMode="url"
                   value={targetUrl}
                   onChange={(e) => setTargetUrl(e.target.value)}
-                  placeholder={product.urlPlaceholder ?? "https://"}
+                  placeholder={form.urlPlaceholder}
                   className="h-11"
                 />
-                <p className="text-xs text-muted-foreground">
-                  작업이 진행될 게시물이나 페이지 주소를 붙여넣어 주세요.
-                </p>
+                <p className="text-xs text-muted-foreground">{form.urlHint}</p>
               </div>
             )}
 
@@ -237,18 +245,19 @@ export function CustomerOrderView({ productId }: { productId: string }) {
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="requestNote" className="text-[13px]">
-                요청사항
+                요청사항 <span className="font-normal text-muted-foreground">(선택)</span>
               </Label>
               <Textarea
                 id="requestNote"
                 rows={4}
                 value={requestNote}
                 onChange={(e) => setRequestNote(e.target.value)}
-                placeholder="강조하고 싶은 키워드나 참고사항을 편하게 적어주세요."
+                placeholder={form.notePlaceholder}
               />
+              {form.noteHint && <p className="text-xs text-muted-foreground">{form.noteHint}</p>}
             </div>
 
-            {product.allowsFile && (
+            {form.showFile && (
               <div className="flex flex-col gap-2">
                 <Label className="text-[13px]">파일 첨부</Label>
                 <FilePicker
@@ -327,10 +336,14 @@ export function CustomerOrderView({ productId }: { productId: string }) {
             >
               <div className="flex flex-col gap-2 rounded-xl bg-muted/60 p-3.5 text-sm">
                 <SummaryRow label="서비스" value={product.name} />
+                {targetUrl.trim() && (
+                  <SummaryRow label={form.urlLabel} value={targetUrl.trim()} />
+                )}
                 <SummaryRow
                   label="수량"
                   value={`${formatNumber(qty)}${product.unitLabel}`}
                 />
+                {requestNote.trim() && <SummaryRow label="요청사항" value={requestNote.trim()} />}
                 <SummaryRow label="주문금액" value={formatPoint(amount)} />
               </div>
             </ConfirmDialog>
@@ -421,7 +434,15 @@ function SummaryRow({
   );
 }
 
-function OrderComplete({ order, unitLabel }: { order: Order; unitLabel: string }) {
+function OrderComplete({
+  order,
+  unitLabel,
+  urlLabel,
+}: {
+  order: Order;
+  unitLabel: string;
+  urlLabel: string;
+}) {
   return (
     <div className="flex flex-col gap-6">
       <OrderSteps current={4} />
@@ -437,11 +458,20 @@ function OrderComplete({ order, unitLabel }: { order: Order; unitLabel: string }
           </p>
         </div>
 
-        <dl className="w-full rounded-xl bg-muted/50 p-4 text-left text-sm">
+        <dl className="flex w-full flex-col gap-2 rounded-xl bg-muted/50 p-4 text-left text-sm">
           <SummaryRow label="주문번호" value={order.orderNo} />
           <SummaryRow label="서비스" value={order.productName} />
+          {order.targetUrl && (
+            <SummaryRow label={urlLabel} value={<ExternalUrl url={order.targetUrl} />} />
+          )}
           <SummaryRow label="수량" value={`${formatNumber(order.qty)}${unitLabel}`} />
           <SummaryRow label="주문금액" value={formatPoint(order.amount)} />
+          {order.requestNote && (
+            <div className="flex flex-col gap-1.5 pt-1">
+              <span className="text-muted-foreground">요청사항</span>
+              <p className="rounded-lg bg-surface p-3 whitespace-pre-wrap">{order.requestNote}</p>
+            </div>
+          )}
         </dl>
 
         <div className="flex w-full flex-col gap-2 sm:flex-row">

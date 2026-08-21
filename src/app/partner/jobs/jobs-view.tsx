@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { StatusBadge } from "@/components/common/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { orderUrlLabel } from "@/lib/domain/order-form";
 import { findProduct, partnerOrders } from "@/lib/domain/selectors";
 import type { AppData, Order } from "@/lib/domain/types";
 import { formatDate, formatDday, formatNumber, formatWon, shortenUrl } from "@/lib/format";
@@ -129,7 +130,7 @@ function JobCard({ order, data }: { order: Order; data: AppData }) {
           </p>
           {order.targetUrl && (
             <p className="mt-1 truncate text-[13px] text-muted-foreground">
-              작업 URL: {shortenUrl(order.targetUrl, 40)}
+              {orderUrlLabel(data, order.categoryId)}: {shortenUrl(order.targetUrl, 40)}
             </p>
           )}
           <p className="num mt-1 text-xs text-muted-foreground">

@@ -9,6 +9,7 @@ import { CustomerStepper } from "@/components/customer/customer-stepper";
 import { ExternalUrl } from "@/components/order/order-detail-parts";
 import { Button } from "@/components/ui/button";
 import { customerStageMeta, customerTimeline } from "@/lib/domain/customer-status";
+import { orderUrlLabel } from "@/lib/domain/order-form";
 import { categoryName, findOrder, findProduct } from "@/lib/domain/selectors";
 import type { Order } from "@/lib/domain/types";
 import {
@@ -94,7 +95,12 @@ export function OrderDetailView({ orderNo }: { orderNo: string }) {
                 </span>
               }
             />
-            {order.targetUrl && <Row label="작업 URL" value={<ExternalUrl url={order.targetUrl} />} />}
+            {order.targetUrl && (
+              <Row
+                label={orderUrlLabel(data, order.categoryId)}
+                value={<ExternalUrl url={order.targetUrl} />}
+              />
+            )}
           </dl>
 
           {order.requestNote && (

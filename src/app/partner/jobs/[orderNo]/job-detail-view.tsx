@@ -19,6 +19,7 @@ import { ResultForm } from "@/components/order/result-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { orderUrlLabel } from "@/lib/domain/order-form";
 import { categoryName, findOrder, findProduct } from "@/lib/domain/selectors";
 import { formatDate, formatDateTime, formatDday, formatNumber, formatWon } from "@/lib/format";
 import { useData } from "@/lib/store/data";
@@ -108,7 +109,10 @@ export function PartnerJobDetailView({ orderNo }: { orderNo: string }) {
                 value={`${formatNumber(order.qty)}${unitLabel}`}
               />
               {order.targetUrl && (
-                <DetailRow label="작업 URL" value={<ExternalUrl url={order.targetUrl} />} />
+                <DetailRow
+                  label={orderUrlLabel(data, order.categoryId)}
+                  value={<ExternalUrl url={order.targetUrl} />}
+                />
               )}
               {order.requestNote && (
                 <div className="flex flex-col gap-1.5 pt-1">

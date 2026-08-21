@@ -11,6 +11,7 @@ import { ApproveButton, RevisionDialog } from "@/components/order/review-actions
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { orderUrlLabel } from "@/lib/domain/order-form";
 import { customerName, findProduct, partnerName } from "@/lib/domain/selectors";
 import type { AppData, Order } from "@/lib/domain/types";
 import { formatDateTime, formatNumber, formatWon } from "@/lib/format";
@@ -99,7 +100,10 @@ function ReviewCard({ order, data }: { order: Order; data: AppData }) {
             />
             <DetailRow label="정산 예정액" value={formatWon(settlement)} />
             {order.targetUrl && (
-              <DetailRow label="작업 URL" value={<ExternalUrl url={order.targetUrl} />} />
+              <DetailRow
+                label={orderUrlLabel(data, order.categoryId)}
+                value={<ExternalUrl url={order.targetUrl} />}
+              />
             )}
             {order.requestNote && (
               <div className="flex flex-col gap-1.5">

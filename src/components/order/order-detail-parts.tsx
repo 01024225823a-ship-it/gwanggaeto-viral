@@ -2,6 +2,7 @@ import { ExternalLink, Link2 } from "lucide-react";
 import { FileList } from "@/components/common/file-picker";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { orderUrlLabel } from "@/lib/domain/order-form";
 import { categoryName, customerName } from "@/lib/domain/selectors";
 import { statusLabel } from "@/lib/domain/status";
 import type { AppData, Order } from "@/lib/domain/types";
@@ -70,7 +71,12 @@ export function OrderInfoCard({
           }
         />
         <DetailRow label="주문일시" value={formatDateTime(order.createdAt)} />
-        {order.targetUrl && <DetailRow label="작업 URL" value={<ExternalUrl url={order.targetUrl} />} />}
+        {order.targetUrl && (
+          <DetailRow
+            label={orderUrlLabel(data, order.categoryId)}
+            value={<ExternalUrl url={order.targetUrl} />}
+          />
+        )}
         {order.requestNote && (
           <div className="flex flex-col gap-1.5 pt-1">
             <span className="text-muted-foreground">요청사항</span>
