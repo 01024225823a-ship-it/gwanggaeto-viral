@@ -162,6 +162,8 @@ export function CustomerOrderView({ productId }: { productId: string }) {
             ) : null}
           </section>
 
+          {form.notices.length > 0 && <ProductNotice notices={form.notices} />}
+
           {/* 주문정보 입력 — 로그인한 광고주에게만 노출 */}
           {canOrder && (
           <section className="flex flex-col gap-5 rounded-2xl border border-border p-5">
@@ -245,8 +247,14 @@ export function CustomerOrderView({ productId }: { productId: string }) {
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="requestNote" className="text-[13px]">
-                요청사항 <span className="font-normal text-muted-foreground">(선택)</span>
+                요청사항{" "}
+                <span className="font-normal text-muted-foreground">{form.noteLabelSuffix}</span>
               </Label>
+              {form.noteNotice && (
+                <p className="rounded-xl bg-amber-50 p-3.5 text-[13px] leading-relaxed whitespace-pre-line text-amber-900 ring-1 ring-amber-200">
+                  {form.noteNotice}
+                </p>
+              )}
               <Textarea
                 id="requestNote"
                 rows={4}
@@ -260,6 +268,11 @@ export function CustomerOrderView({ productId }: { productId: string }) {
             {form.showFile && (
               <div className="flex flex-col gap-2">
                 <Label className="text-[13px]">파일 첨부</Label>
+                {form.fileNotice && (
+                  <p className="rounded-xl bg-muted/60 px-3.5 py-2.5 text-[13px] text-muted-foreground">
+                    {form.fileNotice}
+                  </p>
+                )}
                 <FilePicker
                   value={files}
                   onChange={setFiles}
@@ -360,6 +373,26 @@ export function CustomerOrderView({ productId }: { productId: string }) {
 }
 
 /* ------------------------------------------------------------------ */
+
+/** 주문 전 반드시 확인해야 하는 상품 안내 박스 */
+function ProductNotice({ notices }: { notices: string[] }) {
+  return (
+    <section className="flex flex-col gap-2 rounded-2xl border border-amber-200 bg-amber-50/70 p-5">
+      <p className="flex items-center gap-1.5 text-[13px] font-bold text-amber-900">
+        <AlertTriangle className="size-4 shrink-0" />
+        주문 전 확인해주세요
+      </p>
+      <ul className="flex flex-col gap-1.5">
+        {notices.map((notice) => (
+          <li key={notice} className="flex gap-2 text-[13px] leading-relaxed text-amber-900">
+            <span className="mt-[7px] size-1 shrink-0 rounded-full bg-amber-500" />
+            {notice}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 
 /** 비로그인 사용자에게 보여주는 주문 안내 패널 */
 function GuestOrderPanel({
