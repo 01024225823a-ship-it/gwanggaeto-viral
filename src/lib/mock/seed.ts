@@ -282,25 +282,6 @@ const products: Product[] = [
     guide: ["원하는 카페가 있다면 요청사항에 적어주세요.", "카페 정책으로 글이 삭제되면 1회 재작업해 드립니다."],
     createdAt: at(-110),
   },
-  {
-    id: "prd-cafe-region",
-    categoryId: "cat-cafe-viral",
-    name: "지역 맘카페 배포",
-    description: "매장 주변 지역 맘카페에 소개 글을 올립니다.",
-    price: 28_000,
-    cost: 18_000,
-    minQty: 1,
-    maxQty: 200,
-    unitLabel: "건",
-    defaultPartnerId: "ptn-02",
-    leadDays: 7,
-    visible: true,
-    recommended: false,
-    requiresUrl: false,
-    allowsFile: true,
-    guide: ["매장 주소와 지역을 요청사항에 적어주세요."],
-    createdAt: at(-110),
-  },
 
   /* 카페 댓글 */
   {

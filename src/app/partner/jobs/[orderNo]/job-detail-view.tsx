@@ -115,7 +115,7 @@ export function PartnerJobDetailView({ orderNo }: { orderNo: string }) {
                   value={<ExternalUrl url={order.targetUrl} />}
                 />
               )}
-              <OrderCafeInfo order={order} label="배포 카페" />
+              <OrderCafeInfo order={order} label="배포 카페" showContentGuide />
               {order.requestNote && (
                 <div className="flex flex-col gap-1.5 pt-1">
                   <span className="text-muted-foreground">광고주 요청사항</span>

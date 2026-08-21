@@ -2,7 +2,9 @@ import { ExternalLink, Link2 } from "lucide-react";
 import { FileList } from "@/components/common/file-picker";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { contentTypeLabel } from "@/lib/domain/content-type";
 import { orderUrlLabel } from "@/lib/domain/order-form";
+import { ContentTypeGuide } from "@/components/order/content-type-picker";
 import { cafeGroupName, resolveCafeNames } from "@/lib/mock/cafes";
 import { categoryName, customerName } from "@/lib/domain/selectors";
 import { statusLabel } from "@/lib/domain/status";
@@ -50,15 +52,24 @@ export function ExternalUrl({ url }: { url: string }) {
 export function OrderCafeInfo({
   order,
   label = "선택 카페",
+  showContentGuide = false,
 }: {
   order: Order;
   label?: string;
+  /** 실행사 화면처럼 원고 작성 방식까지 보여줘야 하는 경우 */
+  showContentGuide?: boolean;
 }) {
   const names = resolveCafeNames(order.selectedCafeIds, order.selectedCafeNames);
-  if (!order.cafeGroupId && names.length === 0) return null;
+  if (!order.contentType && !order.cafeGroupId && names.length === 0) return null;
 
   return (
     <div className="flex flex-col gap-2.5 pt-1">
+      {order.contentType && (
+        <>
+          <DetailRow label="원고 유형" value={contentTypeLabel(order.contentType)} />
+          {showContentGuide && <ContentTypeGuide contentType={order.contentType} />}
+        </>
+      )}
       {order.cafeGroupId && (
         <DetailRow label="작업 카테고리" value={cafeGroupName(order.cafeGroupId)} />
       )}

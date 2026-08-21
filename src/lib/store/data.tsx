@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import type { ContentType } from "@/lib/domain/content-type";
 import { nextOrderNo } from "@/lib/domain/order-no";
 import { resolveUnitCost } from "@/lib/domain/selectors";
 import type {
@@ -80,6 +81,8 @@ export interface CreateOrderInput {
   targetUrl: string;
   requestNote: string;
   files: AttachedFile[];
+  /** 카페 게시글 배포에서 고른 원고 유형 */
+  contentType?: ContentType;
   /** 카페 상품에서 고른 작업 카테고리 ID */
   cafeGroupId?: string;
   /** 카페 상품에서 고른 카페 ID 목록 */
@@ -225,6 +228,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           targetUrl: input.targetUrl,
           requestNote: input.requestNote,
           files: input.files,
+          contentType: input.contentType,
           cafeGroupId: input.cafeGroupId,
           selectedCafeIds: input.selectedCafeIds,
           selectedCafeNames: input.selectedCafeNames,

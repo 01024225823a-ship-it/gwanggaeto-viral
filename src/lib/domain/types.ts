@@ -1,3 +1,5 @@
+import type { ContentType } from "@/lib/domain/content-type";
+
 /**
  * 광개토 Viral 도메인 타입
  * - 프로토타입 단계에서는 Mock Store가 이 타입을 그대로 사용한다.
@@ -212,7 +214,9 @@ export interface Order {
   files: AttachedFile[];
   status: OrderStatus;
 
-  /* 카페 상품 전용 — 고객이 고른 작업 카테고리와 배포 카페 */
+  /* 카페 상품 전용 — 고객이 고른 원고 유형과 배포 카페 */
+  /** 원고 유형 (review/question/information) — 기존 주문 호환을 위해 optional */
+  contentType?: ContentType;
   /** 선택한 카페 1차 카테고리 ID */
   cafeGroupId?: string;
   /** 선택한 카페 ID 목록 (기준 데이터) */

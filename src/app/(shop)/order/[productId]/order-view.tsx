@@ -19,12 +19,15 @@ import { EmptyState } from "@/components/common/empty-state";
 import { FilePicker } from "@/components/common/file-picker";
 import { OrderSteps } from "@/components/customer/order-steps";
 import { CafeGroupPicker, CafePicker, SelectedCafeList } from "@/components/order/cafe-picker";
+import { ContentTypePicker } from "@/components/order/content-type-picker";
 import { ExternalUrl, OrderCafeInfo } from "@/components/order/order-detail-parts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { CATEGORY_ICONS, DEFAULT_CATEGORY_ICON } from "@/config/category-icons";
+import type { ContentType } from "@/lib/domain/content-type";
+import { contentTypeLabel } from "@/lib/domain/content-type";
 import { orderFormCopy } from "@/lib/domain/order-form";
 import { findCategory, findProduct } from "@/lib/domain/selectors";
 import type { AttachedFile, Order, Product } from "@/lib/domain/types";
@@ -43,6 +46,7 @@ export function CustomerOrderView({ productId }: { productId: string }) {
   const customer = data.customers.find((c) => c.id === account?.customerId);
 
   const [qty, setQty] = useState<number>(product?.minQty ?? 1);
+  const [contentType, setContentType] = useState<ContentType | "">("");
   const [cafeGroupId, setCafeGroupId] = useState("");
   const [selectedCafeIds, setSelectedCafeIds] = useState<string[]>([]);
   const [targetUrl, setTargetUrl] = useState("");
@@ -116,6 +120,8 @@ export function CustomerOrderView({ productId }: { productId: string }) {
       };
     if (form.urlRequired && !targetUrl.trim())
       return { ok: false, message: form.urlMissingMessage };
+    if (form.contentTypeSelection && !contentType)
+      return { ok: false, message: "원고 유형을 선택해 주세요" };
     if (form.cafeSelection) {
       if (!cafeGroupId) return { ok: false, message: "작업 카테고리를 선택해 주세요" };
       if (availableCafes.length < qty)
@@ -143,7 +149,8 @@ export function CustomerOrderView({ productId }: { productId: string }) {
         targetUrl: targetUrl.trim(),
         requestNote: requestNote.trim(),
         files,
-        // 카페 상품만 선택 카페를 함께 저장한다 (ID가 기준, 이름은 스냅샷)
+        // 카페 상품만 원고 유형·선택 카페를 함께 저장한다 (ID가 기준, 이름은 스냅샷)
+        contentType: form.contentTypeSelection && contentType ? contentType : undefined,
         cafeGroupId: form.cafeSelection ? cafeGroupId : undefined,
         selectedCafeIds: form.cafeSelection ? selectedCafeIds : undefined,
         selectedCafeNames: form.cafeSelection ? selectedCafeNames : undefined,
@@ -211,6 +218,15 @@ export function CustomerOrderView({ productId }: { productId: string }) {
             <h2 className="text-[15px] font-bold">
               <span className="num mr-1.5 text-primary">02</span>주문정보 입력
             </h2>
+
+            {form.contentTypeSelection && (
+              <div className="flex flex-col gap-2">
+                <Label className="text-[13px]">
+                  원고 유형 <span className="text-destructive">*</span>
+                </Label>
+                <ContentTypePicker value={contentType} onChange={setContentType} />
+              </div>
+            )}
 
             {form.cafeSelection && (
               <div className="flex flex-col gap-2">
@@ -389,6 +405,10 @@ export function CustomerOrderView({ productId }: { productId: string }) {
               />
             </div>
 
+            {form.contentTypeSelection && contentType && (
+              <SummaryRow label="원고 유형" value={contentTypeLabel(contentType)} />
+            )}
+
             {form.cafeSelection && (
               <div className="flex flex-col gap-2 rounded-xl bg-muted/50 p-3.5">
                 <div className="flex items-center justify-between gap-2 text-[13px]">
@@ -456,6 +476,9 @@ export function CustomerOrderView({ productId }: { productId: string }) {
                 <SummaryRow label="서비스" value={product.name} />
                 {targetUrl.trim() && (
                   <SummaryRow label={form.urlLabel} value={targetUrl.trim()} />
+                )}
+                {form.contentTypeSelection && contentType && (
+                  <SummaryRow label="원고 유형" value={contentTypeLabel(contentType)} />
                 )}
                 {form.cafeSelection && cafeGroupId && (
                   <SummaryRow label="작업 카테고리" value={cafeGroupName(cafeGroupId)} />

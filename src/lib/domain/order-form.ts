@@ -3,7 +3,7 @@
  *
  * - 유튜브 상품은 "롱폼 영상 URL / 수량 / 요청사항" 구조를 쓴다.
  * - 블로그 상품은 배포 방식·키워드·이미지 첨부에 대한 사전 안내가 필요하다.
- * - 카페 바이럴 상품은 고객이 배포할 카페를 수량만큼 직접 고른다.
+ * - 카페 바이럴 상품은 원고 유형을 고르고, 배포할 카페를 수량만큼 직접 고른다.
  *
  * 주문 화면뿐 아니라 주문완료·주문상세·관리자 주문상세·실행사 작업상세가
  * 같은 라벨을 쓰도록 이 모듈을 공통 기준으로 삼는다.
@@ -58,6 +58,8 @@ export interface OrderFormCopy {
   cafeNotice: string;
   /** 카페 선택 영역 안내 예시 */
   cafeNoticeExample: string;
+  /** 원고 유형(후기형/질문형/정보형)을 고르는 폼인지 */
+  contentTypeSelection: boolean;
 }
 
 /**
@@ -131,6 +133,7 @@ export function orderFormCopy(data: AppData, product: Product): OrderFormCopy {
       cafeSelection: false,
       cafeNotice: "",
       cafeNoticeExample: "",
+      contentTypeSelection: false,
     };
   }
 
@@ -152,17 +155,20 @@ export function orderFormCopy(data: AppData, product: Product): OrderFormCopy {
     cafeSelection: false,
     cafeNotice: "",
     cafeNoticeExample: "",
+    contentTypeSelection: false,
   };
 
   if (isCafeViralCategory(data, product.categoryId)) {
     return {
       ...base,
       cafeSelection: true,
+      contentTypeSelection: true,
       cafeNotice: CAFE_DUPLICATE_NOTICE,
       cafeNoticeExample: CAFE_DUPLICATE_EXAMPLE,
       noteNotice:
-        "추가 요청사항을 입력해주세요.\n동일한 카페에 여러 건 배포를 희망하시는 경우 카페명과 희망 수량을 함께 작성해주세요.",
-      notePlaceholder: CAFE_DUPLICATE_EXAMPLE,
+        "원고 작성 시 반영할 내용이나 강조할 포인트를 입력해주세요.\n동일한 카페에 여러 건 배포를 희망하시는 경우\n카페명과 희망 수량도 함께 작성해주세요.",
+      notePlaceholder:
+        "예) 제품의 가격보다는 편의성을 강조해주세요.\n강서마곡맘모여라 3건 / 아이러브맘 2건",
     };
   }
 
