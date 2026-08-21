@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/common/empty-state";
 import { FileList } from "@/components/common/file-picker";
 import { CustomerStatusBadge } from "@/components/customer/customer-status-badge";
 import { CustomerStepper } from "@/components/customer/customer-stepper";
-import { ExternalUrl } from "@/components/order/order-detail-parts";
+import { ExternalUrl, OrderCafeInfo } from "@/components/order/order-detail-parts";
 import { Button } from "@/components/ui/button";
 import { customerStageMeta, customerTimeline } from "@/lib/domain/customer-status";
 import { orderUrlLabel } from "@/lib/domain/order-form";
@@ -102,6 +102,8 @@ export function OrderDetailView({ orderNo }: { orderNo: string }) {
               />
             )}
           </dl>
+
+          <OrderCafeInfo order={order} />
 
           {order.requestNote && (
             <div className="mt-1 flex flex-col gap-1.5">

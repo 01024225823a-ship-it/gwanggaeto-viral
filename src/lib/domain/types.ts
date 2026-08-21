@@ -76,6 +76,41 @@ export interface Product {
 }
 
 /* ------------------------------------------------------------------ */
+/* 작업 가능 카페 (카페 상품 주문 시 고객이 직접 선택)                   */
+/* ------------------------------------------------------------------ */
+
+/** 카페 1차 카테고리 — 고객이 먼저 고르는 "작업 카테고리" */
+export interface CafeGroup {
+  id: string;
+  name: string;
+  sortOrder: number;
+}
+
+export interface Cafe {
+  id: string;
+  /** 카페명 */
+  name: string;
+  /** 1차 카테고리 ID (CafeGroup.id) */
+  groupId: string;
+  /** 2차 카테고리 — 맘카페, 학습맘, 맛집 등 */
+  subCategory: string;
+  /** 활동지역 — 서울, 경기, 전국 등 */
+  region: string;
+  /** 상세지역 — 화성,동탄 처럼 시·군 단위 (없을 수 있음) */
+  district: string;
+  /** 카페 주소 */
+  url: string;
+  /** 회원수 (보조 정보) */
+  members: number;
+  /** 핫딜 게시판 보유 여부 */
+  hotdealBoard: boolean;
+  /** 등업 불가 카페 여부 (실행 난이도 참고용) */
+  noGradeUp: boolean;
+  /** 일반 발행 가능 여부 — false면 고객 선택 목록에서 제외한다 */
+  publishable: boolean;
+}
+
+/* ------------------------------------------------------------------ */
 /* 광고주 / 실행사                                                      */
 /* ------------------------------------------------------------------ */
 
@@ -176,6 +211,14 @@ export interface Order {
   requestNote: string;
   files: AttachedFile[];
   status: OrderStatus;
+
+  /* 카페 상품 전용 — 고객이 고른 작업 카테고리와 배포 카페 */
+  /** 선택한 카페 1차 카테고리 ID */
+  cafeGroupId?: string;
+  /** 선택한 카페 ID 목록 (기준 데이터) */
+  selectedCafeIds?: string[];
+  /** 주문 시점 카페명 스냅샷 — 카페 목록이 바뀌어도 주문 이력이 유지되도록 */
+  selectedCafeNames?: string[];
 
   /** 배정 정보 */
   partnerId?: string;

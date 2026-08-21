@@ -80,6 +80,12 @@ export interface CreateOrderInput {
   targetUrl: string;
   requestNote: string;
   files: AttachedFile[];
+  /** 카페 상품에서 고른 작업 카테고리 ID */
+  cafeGroupId?: string;
+  /** 카페 상품에서 고른 카페 ID 목록 */
+  selectedCafeIds?: string[];
+  /** 카페명 스냅샷 (표시는 ID 조회를 우선하고, 카탈로그에서 사라진 경우 대비) */
+  selectedCafeNames?: string[];
 }
 
 export interface SubmitResultInput {
@@ -219,6 +225,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           targetUrl: input.targetUrl,
           requestNote: input.requestNote,
           files: input.files,
+          cafeGroupId: input.cafeGroupId,
+          selectedCafeIds: input.selectedCafeIds,
+          selectedCafeNames: input.selectedCafeNames,
           status: "RECEIVED",
           createdAt,
           history: [{ status: "RECEIVED", at: createdAt, by: "CUSTOMER", note: "주문 접수" }],

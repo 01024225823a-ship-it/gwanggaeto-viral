@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/common/empty-state";
 import { FileList } from "@/components/common/file-picker";
 import { PageHeader } from "@/components/common/page-header";
 import { StatusBadge } from "@/components/common/status-badge";
-import { DetailRow, ExternalUrl } from "@/components/order/order-detail-parts";
+import { DetailRow, ExternalUrl, OrderCafeInfo } from "@/components/order/order-detail-parts";
 import { ApproveButton, RevisionDialog } from "@/components/order/review-actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -105,6 +105,7 @@ function ReviewCard({ order, data }: { order: Order; data: AppData }) {
                 value={<ExternalUrl url={order.targetUrl} />}
               />
             )}
+            <OrderCafeInfo order={order} />
             {order.requestNote && (
               <div className="flex flex-col gap-1.5">
                 <span className="text-muted-foreground">광고주 요청사항</span>

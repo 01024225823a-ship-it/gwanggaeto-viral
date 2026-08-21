@@ -18,7 +18,8 @@ import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
 import { FilePicker } from "@/components/common/file-picker";
 import { OrderSteps } from "@/components/customer/order-steps";
-import { ExternalUrl } from "@/components/order/order-detail-parts";
+import { CafeGroupPicker, CafePicker, SelectedCafeList } from "@/components/order/cafe-picker";
+import { ExternalUrl, OrderCafeInfo } from "@/components/order/order-detail-parts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,6 +28,7 @@ import { CATEGORY_ICONS, DEFAULT_CATEGORY_ICON } from "@/config/category-icons";
 import { orderFormCopy } from "@/lib/domain/order-form";
 import { findCategory, findProduct } from "@/lib/domain/selectors";
 import type { AttachedFile, Order, Product } from "@/lib/domain/types";
+import { cafeGroupName, findCafe, publishableCafesOf } from "@/lib/mock/cafes";
 import { formatNumber, formatPoint, formatWon } from "@/lib/format";
 import { useData } from "@/lib/store/data";
 import { useSession } from "@/lib/store/session";
@@ -41,6 +43,8 @@ export function CustomerOrderView({ productId }: { productId: string }) {
   const customer = data.customers.find((c) => c.id === account?.customerId);
 
   const [qty, setQty] = useState<number>(product?.minQty ?? 1);
+  const [cafeGroupId, setCafeGroupId] = useState("");
+  const [selectedCafeIds, setSelectedCafeIds] = useState<string[]>([]);
   const [targetUrl, setTargetUrl] = useState("");
   const [requestNote, setRequestNote] = useState("");
   const [files, setFiles] = useState<AttachedFile[]>([]);
@@ -63,8 +67,28 @@ export function CustomerOrderView({ productId }: { productId: string }) {
     );
   }
 
-  // 카테고리별 주문정보 입력 문구 (유튜브는 롱폼 URL 전용 폼)
+  // 카테고리별 주문정보 입력 문구 (유튜브는 롱폼 URL 전용 폼, 카페는 카페 직접 선택)
   const form = orderFormCopy(data, product);
+
+  // 카페 상품 — 선택한 작업 카테고리에서 고객이 고를 수 있는 카페
+  const availableCafes = form.cafeSelection ? publishableCafesOf(cafeGroupId) : [];
+  const selectedCafeNames = selectedCafeIds.map((id) => findCafe(id)?.name ?? id);
+  /** 선택 가능한 카페 수 = 주문 수량 (수량 입력이 비어 있는 동안에는 0) */
+  const cafeLimit = Number.isFinite(qty) && qty > 0 ? qty : 0;
+
+  /** 수량이 줄면 초과 선택된 카페를 잘라내 항상 "수량 = 최대 선택 수"를 유지한다 */
+  function changeQty(next: number) {
+    setQty(next);
+    if (Number.isFinite(next) && next >= 0 && selectedCafeIds.length > next) {
+      setSelectedCafeIds((prev) => prev.slice(0, Math.max(0, next)));
+    }
+  }
+
+  /** 카테고리를 바꾸면 이전 카테고리에서 고른 카페는 초기화한다 */
+  function changeCafeGroup(nextGroupId: string) {
+    setCafeGroupId(nextGroupId);
+    setSelectedCafeIds([]);
+  }
 
   if (completed) {
     return (
@@ -92,6 +116,19 @@ export function CustomerOrderView({ productId }: { productId: string }) {
       };
     if (form.urlRequired && !targetUrl.trim())
       return { ok: false, message: form.urlMissingMessage };
+    if (form.cafeSelection) {
+      if (!cafeGroupId) return { ok: false, message: "작업 카테고리를 선택해 주세요" };
+      if (availableCafes.length < qty)
+        return {
+          ok: false,
+          message: `선택 가능한 카페가 ${formatNumber(availableCafes.length)}개뿐이에요`,
+        };
+      if (selectedCafeIds.length !== qty)
+        return {
+          ok: false,
+          message: `주문 수량 ${formatNumber(qty)}건에 맞게 카페 ${formatNumber(qty)}개를 선택해주세요.`,
+        };
+    }
     if (shortage > 0) return { ok: false, message: `포인트가 ${formatPoint(shortage)} 부족해요` };
     return { ok: true, message: "" };
   })();
@@ -106,6 +143,10 @@ export function CustomerOrderView({ productId }: { productId: string }) {
         targetUrl: targetUrl.trim(),
         requestNote: requestNote.trim(),
         files,
+        // 카페 상품만 선택 카페를 함께 저장한다 (ID가 기준, 이름은 스냅샷)
+        cafeGroupId: form.cafeSelection ? cafeGroupId : undefined,
+        selectedCafeIds: form.cafeSelection ? selectedCafeIds : undefined,
+        selectedCafeNames: form.cafeSelection ? selectedCafeNames : undefined,
       });
       setCompleted(order);
       toast.success("주문이 접수되었습니다.", { description: order.orderNo });
@@ -171,6 +212,30 @@ export function CustomerOrderView({ productId }: { productId: string }) {
               <span className="num mr-1.5 text-primary">02</span>주문정보 입력
             </h2>
 
+            {form.cafeSelection && (
+              <div className="flex flex-col gap-2">
+                <Label className="text-[13px]">
+                  작업 카테고리 <span className="text-destructive">*</span>
+                </Label>
+                <CafeGroupPicker value={cafeGroupId} onChange={changeCafeGroup} />
+                {cafeGroupId ? (
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">
+                      {cafeGroupName(cafeGroupId)}
+                    </span>{" "}
+                    카테고리에서 지금 작업 가능한 카페{" "}
+                    <span className="num font-semibold text-foreground">
+                      {formatNumber(availableCafes.length)}개
+                    </span>
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    배포를 원하는 카페의 작업 카테고리를 먼저 선택해 주세요.
+                  </p>
+                )}
+              </div>
+            )}
+
             {form.showUrl && (
               <div className="flex flex-col gap-2">
                 <Label htmlFor="targetUrl" className="text-[13px]">
@@ -202,7 +267,7 @@ export function CustomerOrderView({ productId }: { productId: string }) {
                     size="icon"
                     className="size-11 rounded-r-none"
                     aria-label="수량 줄이기"
-                    onClick={() => setQty(Math.max(product.minQty, qty - product.minQty))}
+                    onClick={() => changeQty(Math.max(product.minQty, qty - product.minQty))}
                   >
                     <Minus />
                   </Button>
@@ -213,7 +278,7 @@ export function CustomerOrderView({ productId }: { productId: string }) {
                     min={product.minQty}
                     max={product.maxQty}
                     value={qty || ""}
-                    onChange={(e) => setQty(Number(e.target.value))}
+                    onChange={(e) => changeQty(Number(e.target.value))}
                     className="num h-11 w-24 rounded-none border-0 text-center text-base font-semibold focus-visible:ring-0"
                   />
                   <Button
@@ -222,7 +287,7 @@ export function CustomerOrderView({ productId }: { productId: string }) {
                     size="icon"
                     className="size-11 rounded-l-none"
                     aria-label="수량 늘리기"
-                    onClick={() => setQty(Math.min(product.maxQty, qty + product.minQty))}
+                    onClick={() => changeQty(Math.min(product.maxQty, qty + product.minQty))}
                   >
                     <Plus />
                   </Button>
@@ -236,7 +301,7 @@ export function CustomerOrderView({ productId }: { productId: string }) {
                     type="button"
                     variant={qty === preset ? "secondary" : "outline"}
                     size="xs"
-                    onClick={() => setQty(preset)}
+                    onClick={() => changeQty(preset)}
                   >
                     {formatNumber(preset)}
                     {product.unitLabel}
@@ -244,6 +309,28 @@ export function CustomerOrderView({ productId }: { productId: string }) {
                 ))}
               </div>
             </div>
+
+            {form.cafeSelection && cafeGroupId && (
+              <div className="flex flex-col gap-2">
+                <Label className="text-[13px]">
+                  카페 선택 <span className="text-destructive">*</span>
+                </Label>
+                <CafePicker
+                  groupId={cafeGroupId}
+                  limit={cafeLimit}
+                  value={selectedCafeIds}
+                  onChange={setSelectedCafeIds}
+                  notice={form.cafeNotice}
+                  noticeExample={form.cafeNoticeExample}
+                />
+                {selectedCafeIds.length !== cafeLimit && (
+                  <p className="text-[13px] font-medium text-amber-600">
+                    주문 수량 {formatNumber(cafeLimit)}건에 맞게 카페{" "}
+                    {formatNumber(cafeLimit)}개를 선택해주세요.
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="requestNote" className="text-[13px]">
@@ -302,6 +389,24 @@ export function CustomerOrderView({ productId }: { productId: string }) {
               />
             </div>
 
+            {form.cafeSelection && (
+              <div className="flex flex-col gap-2 rounded-xl bg-muted/50 p-3.5">
+                <div className="flex items-center justify-between gap-2 text-[13px]">
+                  <span className="text-muted-foreground">
+                    {cafeGroupId ? cafeGroupName(cafeGroupId) : "선택 카페"}
+                  </span>
+                  <span className="num font-semibold">
+                    {formatNumber(selectedCafeIds.length)} / {formatNumber(cafeLimit)}개
+                  </span>
+                </div>
+                {selectedCafeNames.length > 0 ? (
+                  <SelectedCafeList names={selectedCafeNames} />
+                ) : (
+                  <p className="text-xs text-muted-foreground">아직 선택한 카페가 없습니다.</p>
+                )}
+              </div>
+            )}
+
             <div className="rounded-xl bg-accent/50 p-4 text-center">
               <p className="text-[13px] font-medium text-muted-foreground">총 주문금액</p>
               <p className="num mt-1 text-2xl font-bold tracking-tight text-primary">
@@ -352,10 +457,25 @@ export function CustomerOrderView({ productId }: { productId: string }) {
                 {targetUrl.trim() && (
                   <SummaryRow label={form.urlLabel} value={targetUrl.trim()} />
                 )}
+                {form.cafeSelection && cafeGroupId && (
+                  <SummaryRow label="작업 카테고리" value={cafeGroupName(cafeGroupId)} />
+                )}
                 <SummaryRow
                   label="수량"
                   value={`${formatNumber(qty)}${product.unitLabel}`}
                 />
+                {form.cafeSelection && selectedCafeNames.length > 0 && (
+                  <div className="flex flex-col gap-1.5 pt-1">
+                    <span className="text-muted-foreground">
+                      선택 카페{" "}
+                      <span className="num">{formatNumber(selectedCafeNames.length)}개</span>
+                    </span>
+                    <SelectedCafeList
+                      names={selectedCafeNames}
+                      className="max-h-40 overflow-y-auto rounded-lg bg-surface p-2.5"
+                    />
+                  </div>
+                )}
                 {requestNote.trim() && <SummaryRow label="요청사항" value={requestNote.trim()} />}
                 <SummaryRow label="주문금액" value={formatPoint(amount)} />
               </div>
@@ -499,6 +619,7 @@ function OrderComplete({
           )}
           <SummaryRow label="수량" value={`${formatNumber(order.qty)}${unitLabel}`} />
           <SummaryRow label="주문금액" value={formatPoint(order.amount)} />
+          <OrderCafeInfo order={order} />
           {order.requestNote && (
             <div className="flex flex-col gap-1.5 pt-1">
               <span className="text-muted-foreground">요청사항</span>

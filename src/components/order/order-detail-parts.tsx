@@ -3,6 +3,7 @@ import { FileList } from "@/components/common/file-picker";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { orderUrlLabel } from "@/lib/domain/order-form";
+import { cafeGroupName, resolveCafeNames } from "@/lib/mock/cafes";
 import { categoryName, customerName } from "@/lib/domain/selectors";
 import { statusLabel } from "@/lib/domain/status";
 import type { AppData, Order } from "@/lib/domain/types";
@@ -42,6 +43,44 @@ export function ExternalUrl({ url }: { url: string }) {
   );
 }
 
+/**
+ * 카페 상품 주문의 작업 카테고리 · 선택 카페.
+ * 주문완료 / 광고주 주문상세 / 관리자 주문상세 · 검수 / 실행사 작업상세가 공유한다.
+ */
+export function OrderCafeInfo({
+  order,
+  label = "선택 카페",
+}: {
+  order: Order;
+  label?: string;
+}) {
+  const names = resolveCafeNames(order.selectedCafeIds, order.selectedCafeNames);
+  if (!order.cafeGroupId && names.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-2.5 pt-1">
+      {order.cafeGroupId && (
+        <DetailRow label="작업 카테고리" value={cafeGroupName(order.cafeGroupId)} />
+      )}
+      {names.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-muted-foreground">
+            {label} <span className="num">{formatNumber(names.length)}개</span>
+          </span>
+          <ol className="grid gap-1 rounded-lg bg-muted/60 p-3 sm:grid-cols-2">
+            {names.map((name, i) => (
+              <li key={`${name}-${i}`} className="flex gap-2 text-[13px]">
+                <span className="num w-4 shrink-0 text-right text-muted-foreground">{i + 1}</span>
+                <span className="min-w-0 flex-1 truncate">{name}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** 주문 기본 정보 카드 */
 export function OrderInfoCard({
   order,
@@ -71,6 +110,7 @@ export function OrderInfoCard({
           }
         />
         <DetailRow label="주문일시" value={formatDateTime(order.createdAt)} />
+        <OrderCafeInfo order={order} />
         {order.targetUrl && (
           <DetailRow
             label={orderUrlLabel(data, order.categoryId)}

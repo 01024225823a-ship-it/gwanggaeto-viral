@@ -3,6 +3,7 @@
  *
  * - 유튜브 상품은 "롱폼 영상 URL / 수량 / 요청사항" 구조를 쓴다.
  * - 블로그 상품은 배포 방식·키워드·이미지 첨부에 대한 사전 안내가 필요하다.
+ * - 카페 바이럴 상품은 고객이 배포할 카페를 수량만큼 직접 고른다.
  *
  * 주문 화면뿐 아니라 주문완료·주문상세·관리자 주문상세·실행사 작업상세가
  * 같은 라벨을 쓰도록 이 모듈을 공통 기준으로 삼는다.
@@ -16,6 +17,9 @@ export const YOUTUBE_CATEGORY_SLUG = "youtube";
 
 /** 블로그 카테고리 슬러그 */
 export const BLOG_CATEGORY_SLUG = "blog";
+
+/** 카페 바이럴 카테고리 슬러그 — 카페 직접 선택이 적용되는 카테고리 */
+export const CAFE_VIRAL_CATEGORY_SLUG = "cafe-viral";
 
 /** 기본(비유튜브) 주문 폼의 URL 라벨 */
 export const DEFAULT_URL_LABEL = "작업 URL";
@@ -48,6 +52,12 @@ export interface OrderFormCopy {
   showFile: boolean;
   /** 파일 첨부칸 위에 표시할 안내 (없으면 빈 문자열) */
   fileNotice: string;
+  /** 주문 수량만큼 카페를 직접 선택하는 폼인지 */
+  cafeSelection: boolean;
+  /** 카페 선택 영역 안내 (없으면 빈 문자열) */
+  cafeNotice: string;
+  /** 카페 선택 영역 안내 예시 */
+  cafeNoticeExample: string;
 }
 
 /**
@@ -73,6 +83,11 @@ const KEYWORD_PRODUCT_IDS = new Set(["prd-blog-top"]);
 /** 블로그 이미지 첨부 안내 */
 const BLOG_FILE_NOTICE = "원활한 포스팅을 위해 8~15개의 이미지를 첨부해주세요.";
 
+/** 같은 카페에 여러 건을 원할 때의 안내 — 중복 선택 대신 요청사항으로 받는다 */
+const CAFE_DUPLICATE_NOTICE =
+  "동일한 카페에 2건 이상 배포를 희망하시는 경우 요청사항에 카페명과 희망 수량을 남겨주세요.";
+const CAFE_DUPLICATE_EXAMPLE = "예) 강서마곡맘모여라 3건 / 아이러브맘 2건";
+
 /** 해당 카테고리가 유튜브인지 */
 export function isYoutubeCategory(data: AppData, categoryId?: string): boolean {
   return findCategory(data, categoryId)?.slug === YOUTUBE_CATEGORY_SLUG;
@@ -81,6 +96,11 @@ export function isYoutubeCategory(data: AppData, categoryId?: string): boolean {
 /** 해당 카테고리가 블로그인지 */
 export function isBlogCategory(data: AppData, categoryId?: string): boolean {
   return findCategory(data, categoryId)?.slug === BLOG_CATEGORY_SLUG;
+}
+
+/** 해당 카테고리가 카페 바이럴인지 (카페 댓글은 게시글 URL을 받으므로 제외) */
+export function isCafeViralCategory(data: AppData, categoryId?: string): boolean {
+  return findCategory(data, categoryId)?.slug === CAFE_VIRAL_CATEGORY_SLUG;
 }
 
 /** 주문 상세·작업 상세에서 쓰는 URL 라벨 */
@@ -108,6 +128,9 @@ export function orderFormCopy(data: AppData, product: Product): OrderFormCopy {
       // 유튜브 주문정보는 URL·수량·요청사항 3가지로 고정한다
       showFile: false,
       fileNotice: "",
+      cafeSelection: false,
+      cafeNotice: "",
+      cafeNoticeExample: "",
     };
   }
 
@@ -126,7 +149,22 @@ export function orderFormCopy(data: AppData, product: Product): OrderFormCopy {
     notePlaceholder: "강조하고 싶은 키워드나 참고사항을 편하게 적어주세요.",
     showFile: product.allowsFile,
     fileNotice: "",
+    cafeSelection: false,
+    cafeNotice: "",
+    cafeNoticeExample: "",
   };
+
+  if (isCafeViralCategory(data, product.categoryId)) {
+    return {
+      ...base,
+      cafeSelection: true,
+      cafeNotice: CAFE_DUPLICATE_NOTICE,
+      cafeNoticeExample: CAFE_DUPLICATE_EXAMPLE,
+      noteNotice:
+        "추가 요청사항을 입력해주세요.\n동일한 카페에 여러 건 배포를 희망하시는 경우 카페명과 희망 수량을 함께 작성해주세요.",
+      notePlaceholder: CAFE_DUPLICATE_EXAMPLE,
+    };
+  }
 
   if (!isBlogCategory(data, product.categoryId)) return base;
 
