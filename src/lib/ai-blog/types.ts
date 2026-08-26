@@ -88,6 +88,10 @@ export interface AiBlogArticle {
   checklist: string[];
   faqs: AiBlogFaq[];
   outro: string;
+  /** 참고자료에서 정리한 요점 — 직접 입력한 자료가 있을 때만 채워진다 */
+  referenceNotes?: string[];
+  /** 생성 직후 자동 검증한 주제 관련성 */
+  relevance?: RelevanceReport;
   generatedAt: string;
   source: AiBlogSource;
 }
@@ -115,6 +119,38 @@ export interface AiBlogOutline {
   tableRows: Array<[string, string]>;
   plainText: string;
   charCount: number;
+}
+
+/* ------------------------------------------------------------------ */
+/* 주제 관련성 검증                                                     */
+/* ------------------------------------------------------------------ */
+
+export type RelevanceIssueCode =
+  | "topic-missing"
+  | "heading-drift"
+  | "off-domain"
+  | "keyword-missing"
+  | "too-short";
+
+export interface RelevanceIssue {
+  code: RelevanceIssueCode;
+  message: string;
+}
+
+/**
+ * 생성된 원고가 입력한 주제를 실제로 다루고 있는지에 대한 판정.
+ * 키워드 등장 횟수만이 아니라 제목·도입·소제목·마무리의 "위치"와
+ * 업종 어휘 사용, 다른 분야 어휘 혼입까지 함께 본다.
+ */
+export interface RelevanceReport {
+  /** 0~100 */
+  score: number;
+  ok: boolean;
+  /** 원고에서 확인된 주제·키워드 표현 */
+  matchedTerms: string[];
+  /** 주제와 무관한 다른 분야 어휘 */
+  offDomainTerms: string[];
+  issues: RelevanceIssue[];
 }
 
 /* ------------------------------------------------------------------ */

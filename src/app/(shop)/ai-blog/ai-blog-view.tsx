@@ -13,6 +13,8 @@ import type { ImageOptionValue } from "@/components/ai-blog/image-options";
 import { RecentProjects } from "@/components/ai-blog/recent-projects";
 import { AiBlogResultView } from "@/components/ai-blog/result-view";
 import { articleToDraft, countChars, outlineFromDraft } from "@/lib/ai-blog/article";
+import { parseConstraints } from "@/lib/ai-blog/constraints";
+import { getReferenceResolver } from "@/lib/ai-blog/references";
 import { getAiBlogService } from "@/lib/ai-blog/service";
 import {
   createAiBlogProject,
@@ -28,6 +30,7 @@ import type {
   AiBlogProject,
   AiBlogReviseInstruction,
 } from "@/lib/ai-blog/types";
+import { checkTopicRelevance } from "@/lib/ai-blog/validate";
 import { AI_BLOG_TOOL } from "@/lib/domain/service-tools";
 import { useSession } from "@/lib/store/session";
 
@@ -81,6 +84,12 @@ export function AiBlogView() {
   const [imaging, setImaging] = useState(false);
 
   const outline = draft ? outlineFromDraft(draft) : null;
+  // 추가 요청사항 해석 결과와 주제 반영도는 현재 원고 기준으로 매번 다시 계산한다
+  const constraints = parseConstraints(input.requestNotes);
+  const relevance = draft ? checkTopicRelevance(draft, input) : null;
+  const unreadUrlCount = getReferenceResolver().canFetchUrl
+    ? 0
+    : input.references.filter((r) => r.kind === "url").length;
 
   function goStep(next: number) {
     setStep(next);
@@ -265,6 +274,9 @@ export function AiBlogView() {
             draft={draft}
             input={input}
             charCount={countChars(draft.body)}
+            relevance={relevance ?? checkTopicRelevance(draft, input)}
+            constraintLabels={constraints.labels}
+            unreadUrlCount={unreadUrlCount}
             regenerating={generating}
             onRegenerate={generate}
             onBack={() => setStep(1)}
@@ -277,6 +289,7 @@ export function AiBlogView() {
           <ArticleEditor
             draft={draft}
             input={input}
+            relevance={relevance ?? checkTopicRelevance(draft, input)}
             onDraftChange={setDraft}
             onRevise={revise}
             revisingLabel={revisingLabel}

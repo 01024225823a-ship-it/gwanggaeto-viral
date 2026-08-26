@@ -5,12 +5,18 @@ import { ArrowRight, Eye, LoaderCircle, PenLine, RefreshCw, Sparkles } from "luc
 import { AiDemoBadge, AiFactCheckNotice } from "@/components/ai-blog/ai-notice";
 import { ArticleBody } from "@/components/ai-blog/article-body";
 import { CopyButton } from "@/components/ai-blog/copy-button";
+import { RelevanceBadge, RelevanceWarning } from "@/components/ai-blog/relevance-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { countChars, draftToFullText } from "@/lib/ai-blog/article";
 import { AI_BLOG_REVISE_OPTIONS, needsFactCheck } from "@/lib/ai-blog/options";
-import type { AiBlogDraft, AiBlogInput, AiBlogReviseInstruction } from "@/lib/ai-blog/types";
+import type {
+  AiBlogDraft,
+  AiBlogInput,
+  AiBlogReviseInstruction,
+  RelevanceReport,
+} from "@/lib/ai-blog/types";
 import { formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +29,7 @@ import { cn } from "@/lib/utils";
 export function ArticleEditor({
   draft,
   input,
+  relevance,
   onDraftChange,
   onRevise,
   revisingLabel,
@@ -32,6 +39,8 @@ export function ArticleEditor({
 }: {
   draft: AiBlogDraft;
   input: AiBlogInput;
+  /** 편집 중인 원고의 주제 반영도 (수정할 때마다 다시 계산된다) */
+  relevance: RelevanceReport;
   onDraftChange: (next: AiBlogDraft) => void;
   onRevise: (instruction: AiBlogReviseInstruction) => void;
   /** AI 수정 진행 중인 항목명 (없으면 null) */
@@ -56,6 +65,8 @@ export function ArticleEditor({
 
   return (
     <div className="flex flex-col gap-5">
+      <RelevanceWarning report={relevance} onRegenerate={onRegenerate} />
+
       <section className="flex flex-col gap-4 rounded-2xl border border-border bg-surface p-5 sm:p-6">
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex overflow-hidden rounded-lg border border-input">
@@ -85,6 +96,8 @@ export function ArticleEditor({
               );
             })}
           </div>
+
+          <RelevanceBadge report={relevance} />
 
           <div className="ml-auto flex items-center gap-1.5">
             <CopyButton size="sm" text={draftToFullText(draft)} toastLabel="원고를 복사했습니다." />

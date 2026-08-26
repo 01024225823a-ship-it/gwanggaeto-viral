@@ -18,6 +18,7 @@ import {
   AI_BLOG_PURPOSES,
   needsFactCheck,
 } from "@/lib/ai-blog/options";
+import { URL_NOT_ANALYZED_NOTICE } from "@/lib/ai-blog/references";
 import type { AiBlogInput, AiBlogReference } from "@/lib/ai-blog/types";
 import { formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -297,7 +298,7 @@ export function AiBlogInputForm({
       <section className="flex flex-col gap-5 rounded-2xl border border-border bg-surface p-5 sm:p-6">
         <Field
           label="참고자료"
-          hint="참고할 주소나 내용을 넣어두면 원고 방향을 잡는 데 사용합니다. (현재는 입력값만 저장합니다)"
+          hint={URL_NOT_ANALYZED_NOTICE}
         >
           <div className="flex flex-col gap-2">
             <div className="flex flex-wrap gap-2">
@@ -346,6 +347,16 @@ export function AiBlogInputForm({
                     className="flex items-center gap-2 rounded-lg bg-muted/60 px-3 py-2 text-[13px]"
                   >
                     <Link2 className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span
+                      className={cn(
+                        "shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold",
+                        reference.kind === "text"
+                          ? "bg-primary/10 text-primary"
+                          : "bg-amber-100 text-amber-800",
+                      )}
+                    >
+                      {reference.kind === "text" ? "원고 반영" : "주소만 저장"}
+                    </span>
                     <span className="min-w-0 flex-1 truncate">{reference.value}</span>
                     <button
                       type="button"

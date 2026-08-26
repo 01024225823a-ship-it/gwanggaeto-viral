@@ -1,9 +1,14 @@
 "use client";
 
-import { ArrowRight, LoaderCircle, Pencil, RefreshCw } from "lucide-react";
+import { ArrowRight, Info, LoaderCircle, Pencil, RefreshCw } from "lucide-react";
 import { AiDemoBadge, AiFactCheckNotice } from "@/components/ai-blog/ai-notice";
 import { ArticleBody } from "@/components/ai-blog/article-body";
 import { CopyButton } from "@/components/ai-blog/copy-button";
+import {
+  ConstraintChips,
+  RelevanceBadge,
+  RelevanceWarning,
+} from "@/components/ai-blog/relevance-badge";
 import { Button } from "@/components/ui/button";
 import { draftToFullText } from "@/lib/ai-blog/article";
 import {
@@ -12,7 +17,7 @@ import {
   needsFactCheck,
   purposeLabel,
 } from "@/lib/ai-blog/options";
-import type { AiBlogDraft, AiBlogInput } from "@/lib/ai-blog/types";
+import type { AiBlogDraft, AiBlogInput, RelevanceReport } from "@/lib/ai-blog/types";
 import { formatNumber } from "@/lib/format";
 
 /** 생성 중 화면 — 어떤 작업을 하고 있는지 순서대로 보여준다 */
@@ -33,8 +38,29 @@ export function ArticleGenerating({ steps }: { steps: string[] }) {
   );
 }
 
+/** 읽지 못한 참고 링크 안내 — 내용을 반영한 것처럼 보이지 않게 명시한다 */
+export function UnreadReferenceNotice({ count }: { count: number }) {
+  if (count === 0) return null;
+  return (
+    <p className="flex items-start gap-2 rounded-xl bg-muted/60 px-4 py-3 text-[13px] leading-relaxed text-muted-foreground">
+      <Info className="mt-0.5 size-4 shrink-0 text-primary" />
+      입력하신 참고 링크 {count}건은 <strong className="font-semibold">주소만 저장</strong>되었고
+      페이지 내용은 자동으로 분석되지 않았습니다. 원고에 꼭 들어가야 할 내용은 참고자료를 &lsquo;직접
+      입력&rsquo;으로 넣고 다시 생성해 주세요.
+    </p>
+  );
+}
+
 /** 생성 조건 요약 — 어떤 입력으로 만든 원고인지 한눈에 보여준다 */
-export function InputSummary({ input, charCount }: { input: AiBlogInput; charCount: number }) {
+export function InputSummary({
+  input,
+  charCount,
+  constraintLabels = [],
+}: {
+  input: AiBlogInput;
+  charCount: number;
+  constraintLabels?: string[];
+}) {
   const items = [
     { label: "업종", value: categoryLabel(input.category) },
     { label: "목적", value: purposeLabel(input.purpose) },
@@ -47,14 +73,17 @@ export function InputSummary({ input, charCount }: { input: AiBlogInput; charCou
   ];
 
   return (
-    <dl className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-      {items.map((item) => (
-        <div key={item.label} className="rounded-xl bg-muted/60 px-3 py-2">
-          <dt className="text-[11px] text-muted-foreground">{item.label}</dt>
-          <dd className="num mt-0.5 truncate text-[13px] font-semibold">{item.value}</dd>
-        </div>
-      ))}
-    </dl>
+    <div className="flex flex-col gap-2">
+      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {items.map((item) => (
+          <div key={item.label} className="rounded-xl bg-muted/60 px-3 py-2">
+            <dt className="text-[11px] text-muted-foreground">{item.label}</dt>
+            <dd className="num mt-0.5 truncate text-[13px] font-semibold">{item.value}</dd>
+          </div>
+        ))}
+      </dl>
+      <ConstraintChips labels={constraintLabels} />
+    </div>
   );
 }
 
@@ -66,6 +95,9 @@ export function ArticleResult({
   draft,
   input,
   charCount,
+  relevance,
+  constraintLabels,
+  unreadUrlCount,
   regenerating,
   onRegenerate,
   onBack,
@@ -74,6 +106,12 @@ export function ArticleResult({
   draft: AiBlogDraft;
   input: AiBlogInput;
   charCount: number;
+  /** 주제 반영도 검증 결과 */
+  relevance: RelevanceReport;
+  /** 추가 요청사항이 어떻게 해석됐는지 */
+  constraintLabels: string[];
+  /** 내용을 읽지 못한 참고 링크 수 */
+  unreadUrlCount: number;
   regenerating: boolean;
   onRegenerate: () => void;
   /** 입력 화면으로 되돌아가기 */
@@ -83,15 +121,25 @@ export function ArticleResult({
 }) {
   return (
     <div className="flex flex-col gap-5">
-      <InputSummary input={input} charCount={charCount} />
+      <InputSummary input={input} charCount={charCount} constraintLabels={constraintLabels} />
+
+      <RelevanceWarning report={relevance} onRegenerate={onRegenerate} />
+      <UnreadReferenceNotice count={unreadUrlCount} />
 
       <section className="flex flex-col gap-4 rounded-2xl border border-border bg-surface p-5 sm:p-7">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[11px] font-medium text-muted-foreground">생성된 원고</span>
           <AiDemoBadge />
+          <RelevanceBadge report={relevance} />
           <div className="ml-auto flex items-center gap-1.5">
             <CopyButton size="sm" text={draftToFullText(draft)} toastLabel="원고를 복사했습니다." />
-            <Button type="button" variant="outline" size="sm" disabled={regenerating} onClick={onRegenerate}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={regenerating}
+              onClick={onRegenerate}
+            >
               <RefreshCw className={regenerating ? "size-4 animate-spin" : "size-4"} />
               다시 생성
             </Button>

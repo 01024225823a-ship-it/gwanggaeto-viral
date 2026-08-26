@@ -1,3 +1,4 @@
+import type { AiBlogConstraints } from "@/lib/ai-blog/constraints";
 import {
   AI_BLOG_IMAGE_TYPES,
   articleTypeLabel,
@@ -6,6 +7,7 @@ import {
   imageStyleLabel,
   purposeLabel,
 } from "@/lib/ai-blog/options";
+import type { ResolvedReference } from "@/lib/ai-blog/references";
 import type {
   AiBlogAspectRatio,
   AiBlogCardPlan,
@@ -32,34 +34,101 @@ import type {
 /* 원고 프롬프트                                                        */
 /* ------------------------------------------------------------------ */
 
-/** STEP 1 입력 → 원고 생성 프롬프트 */
-export function buildArticlePrompt(input: AiBlogInput): string {
-  const references = input.references
-    .map((r) => `- ${r.kind === "url" ? "참고 URL" : "참고 내용"}: ${r.value}`)
-    .join("\n");
+export interface ArticlePromptOptions {
+  /** 참고자료 수집 결과 — 읽지 못한 URL은 그렇게 명시한다 */
+  resolved?: ResolvedReference[];
+  /** 추가 요청사항을 해석한 제약조건 */
+  constraints?: AiBlogConstraints;
+  /** 업종 플레이북이 정한 소제목 구성 */
+  outline?: string[];
+}
+
+function referenceBlock(resolved: ResolvedReference[]): string {
+  const usable = resolved.filter((r) => r.status !== "NOT_FETCHED");
+  const unread = resolved.filter((r) => r.status === "NOT_FETCHED");
+
+  const blocks: string[] = [];
+
+  if (usable.length > 0) {
+    const points = usable
+      .map((r) => (r.points.length > 0 ? r.points.map((pt) => `- ${pt}`).join("\n") : `- ${r.source}`))
+      .join("\n");
+    blocks.push(`[참고자료 — 아래 내용을 근거로 사용]\n${points}`);
+  }
+
+  if (unread.length > 0) {
+    const links = unread.map((r) => `- ${r.source}`).join("\n");
+    blocks.push(
+      `[참고 링크 — 내용 미확인]\n${links}\n※ 위 링크의 내용은 확인되지 않았습니다. 링크에 적혀 있을 법한 내용을 추측해서 쓰지 마세요.`,
+    );
+  }
+
+  return blocks.join("\n\n");
+}
+
+function constraintBlock(constraints?: AiBlogConstraints): string {
+  if (!constraints || !constraints.raw) return "";
+
+  const rules = [
+    constraints.noAds
+      ? "- 제품 홍보가 아니라 정보 전달이 목적이다. 광고성 수식어와 단정적인 효능 표현을 쓰지 않는다."
+      : "",
+    constraints.professional
+      ? "- 각 문단은 근거 → 설명 → 독자가 확인할 사항 순서로 구성한다."
+      : "",
+    constraints.simple ? "- 전문 용어는 풀어 쓰고 문장을 짧게 유지한다." : "",
+    constraints.brands.length > 0 && constraints.brandLevel === "light"
+      ? `- ${constraints.brands.join(", ")}는 본문 후반부에서 1~2회만 예시 수준으로 언급하고, 본문 대부분은 일반적인 정보로 채운다.`
+      : "",
+    constraints.brands.length > 0 && constraints.brandLevel === "none"
+      ? `- ${constraints.brands.join(", ")}는 언급하지 않는다.`
+      : "",
+    constraints.includeTable ? "- 정리 표를 반드시 포함한다." : "",
+    constraints.includeChecklist ? "- 체크리스트를 반드시 포함한다." : "",
+    constraints.includeFaq ? "- FAQ를 반드시 포함한다." : "",
+  ].filter(Boolean);
+
+  return [`[반드시 지킬 요청사항]\n${constraints.raw}`, ...rules].join("\n");
+}
+
+/**
+ * STEP 1 입력 → 원고 생성 프롬프트.
+ *
+ * 입력값 우선순위(주제 → 참고자료 → 추가 요청사항 → 키워드 → 업종 …)를
+ * 프롬프트의 서술 순서로 그대로 옮긴다.
+ */
+export function buildArticlePrompt(input: AiBlogInput, options?: ArticlePromptOptions): string {
+  const structure =
+    options?.outline && options.outline.length > 0
+      ? `제목 / 도입부 / 핵심 요약 3~5개 / ${options.outline.join(" / ")} / 정리 표 / 체크리스트 / FAQ 3개 / 마무리`
+      : "제목 / 도입부 / 핵심 요약 3~5개 / 소제목 3개 이상의 본문 / 정리 표 / 체크리스트 / FAQ 3개 / 마무리";
 
   return [
     "당신은 네이버 블로그 상위 노출 경험이 많은 한국어 콘텐츠 에디터입니다.",
     "아래 조건에 맞춰 그대로 발행할 수 있는 정보성 블로그 원고를 작성하세요.",
     "",
-    `- 주제: ${input.topic}`,
+    `[주제] ${input.topic}`,
+    "이 글은 위 주제를 설명하는 글입니다. 주제와 직접 관련 없는 일반론으로 채우지 마세요.",
+    "",
+    referenceBlock(options?.resolved ?? []),
+    constraintBlock(options?.constraints),
+    "",
     `- 핵심 키워드: ${input.keywords.join(", ")}`,
     `- 업종/분야: ${categoryLabel(input.category)}`,
     `- 원고 목적: ${purposeLabel(input.purpose)}`,
     `- 타깃 독자: ${input.target || "일반 독자"}`,
     `- 원고 유형: ${articleTypeLabel(input.articleType)}`,
     `- 목표 분량: 공백 제외 약 ${input.articleLength}자`,
-    references ? `\n[참고자료]\n${references}` : "",
-    input.requestNotes ? `\n[추가 요청사항]\n${input.requestNotes}` : "",
     "",
     "[구성]",
-    "제목 / 도입부 / 핵심 요약 3~5개 / 소제목 3개 이상의 본문 / 정리 표 / 체크리스트 / FAQ 3개 / 마무리",
+    structure,
     "",
     "[작성 규칙]",
     "1. 핵심 키워드를 제목과 본문에 자연스럽게 배치한다.",
-    "2. 과장된 광고 표현과 단정적인 효능 표현을 쓰지 않는다.",
-    "3. 확인되지 않은 수치나 법령 조문을 지어내지 않는다.",
-    "4. 문단은 3~4줄로 끊어 모바일에서 읽기 좋게 작성한다.",
+    "2. 왜 그런지 → 무엇을 확인해야 하는지 → 어떻게 판단할지 순서로 구체적으로 쓴다.",
+    "3. 의미 없는 일반론 문장을 반복하지 않는다.",
+    "4. 확인되지 않은 수치·법령·효능을 지어내지 않는다.",
+    "5. 문단은 3~4줄로 끊어 모바일에서 읽기 좋게 작성한다.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -73,9 +142,10 @@ export function buildRevisePrompt(
 ): string {
   const request = instruction.action === "custom" ? (instruction.note ?? "") : instruction.label;
   return [
-    "아래 블로그 원고를 요청에 맞게 수정하세요. 전체 구조와 사실관계는 유지합니다.",
+    "아래 블로그 원고를 요청에 맞게 수정하세요. 주제와 사실관계는 유지합니다.",
     "",
     `[요청] ${request}`,
+    `[주제] ${input.topic}`,
     `[핵심 키워드] ${input.keywords.join(", ")}`,
     `[타깃 독자] ${input.target || "일반 독자"}`,
     "",
@@ -192,7 +262,8 @@ export function planCardNews(outline: AiBlogOutline, cardCount: number): AiBlogC
   const points: Omit<AiBlogCardPlan, "index">[] = [];
   for (let i = 0; i < room; i += 1) {
     const heading = sources.length > 0 ? sources[i % sources.length] : outline.title;
-    const detail = outline.summary.length > 0 ? outline.summary[(i + 2) % outline.summary.length] : "";
+    const detail =
+      outline.summary.length > 0 ? outline.summary[(i + 2) % outline.summary.length] : "";
     points.push({ role: "point", title: heading, lines: [detail].filter(Boolean) });
   }
 

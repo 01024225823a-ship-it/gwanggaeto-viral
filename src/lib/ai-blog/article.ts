@@ -14,6 +14,7 @@ import type { AiBlogArticle, AiBlogDraft, AiBlogFaq, AiBlogOutline } from "@/lib
 /** 마크다운 블록 제목 — 직렬화와 파싱이 같은 값을 쓴다 */
 export const BLOCK = {
   summary: "핵심 요약",
+  reference: "참고자료에서 확인한 내용",
   table: "한눈에 정리",
   checklist: "체크리스트",
   faq: "자주 묻는 질문",
@@ -36,6 +37,11 @@ export function articleToMarkdown(article: AiBlogArticle): string {
   if (article.summary.length > 0) {
     out.push(`## ${BLOCK.summary}`);
     out.push(article.summary.map((s) => `- ${s}`).join("\n"));
+  }
+
+  if (article.referenceNotes && article.referenceNotes.length > 0) {
+    out.push(`## ${BLOCK.reference}`);
+    out.push(article.referenceNotes.map((note) => `- ${note}`).join("\n"));
   }
 
   for (const [i, section] of article.sections.entries()) {
