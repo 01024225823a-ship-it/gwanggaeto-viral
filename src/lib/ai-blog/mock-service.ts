@@ -9,7 +9,7 @@ import {
 import type { AiBlogConstraints } from "@/lib/ai-blog/constraints";
 import type { CategoryPlaybook, PlaybookContext, PlaybookSection } from "@/lib/ai-blog/playbooks";
 import { TYPE_SECTION_ORDER, playbookOf, sectionHeading } from "@/lib/ai-blog/playbooks";
-import { buildImagePrompts } from "@/lib/ai-blog/prompts";
+import { generateMockImages } from "@/lib/ai-blog/mock-images";
 import { getReferenceResolver, usablePoints } from "@/lib/ai-blog/references";
 import type { ResolvedReference } from "@/lib/ai-blog/references";
 import type { AiBlogService } from "@/lib/ai-blog/service";
@@ -18,8 +18,6 @@ import type {
   AiBlogArticle,
   AiBlogDraft,
   AiBlogFaq,
-  AiBlogImageAsset,
-  AiBlogImageRequest,
   AiBlogInput,
   AiBlogReviseAction,
   AiBlogReviseInstruction,
@@ -558,66 +556,6 @@ function applyRevision(
 }
 
 /* ------------------------------------------------------------------ */
-/* 이미지 (Mock)                                                        */
-/* ------------------------------------------------------------------ */
-
-function toAssets(request: AiBlogImageRequest, stamp: number): AiBlogImageAsset[] {
-  const prompts = buildImagePrompts(request);
-  const assets: AiBlogImageAsset[] = [];
-
-  for (const prompt of prompts) {
-    if (prompt.type === "infographic") {
-      assets.push({
-        id: `img-${stamp}-infographic`,
-        type: "infographic",
-        index: 0,
-        title: request.outline.title,
-        lines: prompt.points,
-        footnote: prompt.footnote,
-        ratio: prompt.ratio,
-        style: prompt.style,
-        prompt: prompt.text,
-        status: "MOCK",
-      });
-      continue;
-    }
-
-    if (prompt.type === "cardnews") {
-      for (const card of prompt.cards) {
-        assets.push({
-          id: `img-${stamp}-card-${card.index}`,
-          type: "cardnews",
-          index: card.index,
-          title: card.title,
-          lines: card.lines,
-          footnote: `${card.index} / ${prompt.cards.length}`,
-          ratio: prompt.ratio,
-          style: prompt.style,
-          prompt: prompt.text,
-          status: "MOCK",
-        });
-      }
-      continue;
-    }
-
-    assets.push({
-      id: `img-${stamp}-thumbnail`,
-      type: "thumbnail",
-      index: 0,
-      title: request.outline.title,
-      lines: prompt.titleLines,
-      footnote: prompt.subtitle,
-      ratio: prompt.ratio,
-      style: prompt.style,
-      prompt: prompt.text,
-      status: "MOCK",
-    });
-  }
-
-  return assets;
-}
-
-/* ------------------------------------------------------------------ */
 /* 서비스 구현                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -654,9 +592,7 @@ export const mockAiBlogService: AiBlogService = {
     return applyRevision(resolveAction(instruction), draft, input, instruction);
   },
 
-  async generateImages(request) {
-    await delay(1_500);
-    const stamp = Date.now();
-    return { prompts: buildImagePrompts(request), assets: toAssets(request, stamp) };
+  generateImages(request) {
+    return generateMockImages(request);
   },
 };

@@ -95,6 +95,7 @@ export function ArticleResult({
   draft,
   input,
   charCount,
+  demo,
   relevance,
   constraintLabels,
   unreadUrlCount,
@@ -106,6 +107,8 @@ export function ArticleResult({
   draft: AiBlogDraft;
   input: AiBlogInput;
   charCount: number;
+  /** 템플릿 Mock 이 만든 원고인지 (실제 AI 응답이면 false) */
+  demo: boolean;
   /** 주제 반영도 검증 결과 */
   relevance: RelevanceReport;
   /** 추가 요청사항이 어떻게 해석됐는지 */
@@ -129,7 +132,7 @@ export function ArticleResult({
       <section className="flex flex-col gap-4 rounded-2xl border border-border bg-surface p-5 sm:p-7">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[11px] font-medium text-muted-foreground">생성된 원고</span>
-          <AiDemoBadge />
+          {demo && <AiDemoBadge />}
           <RelevanceBadge report={relevance} />
           <div className="ml-auto flex items-center gap-1.5">
             <CopyButton size="sm" text={draftToFullText(draft)} toastLabel="원고를 복사했습니다." />

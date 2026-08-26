@@ -32,6 +32,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# 값이 없는 예시 파일만 커밋한다 (실제 키가 담긴 .env.local 은 위 규칙으로 계속 무시됨)
+!.env.example
 
 # vercel
 .vercel

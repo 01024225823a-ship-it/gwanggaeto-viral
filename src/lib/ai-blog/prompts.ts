@@ -1,3 +1,4 @@
+import { BLOCK } from "@/lib/ai-blog/article";
 import type { AiBlogConstraints } from "@/lib/ai-blog/constraints";
 import {
   AI_BLOG_IMAGE_TYPES,
@@ -53,13 +54,13 @@ function referenceBlock(resolved: ResolvedReference[]): string {
     const points = usable
       .map((r) => (r.points.length > 0 ? r.points.map((pt) => `- ${pt}`).join("\n") : `- ${r.source}`))
       .join("\n");
-    blocks.push(`[참고자료 — 아래 내용을 근거로 사용]\n${points}`);
+    blocks.push(`[3. 참고자료 — 아래 내용을 근거로 사용]\n${points}`);
   }
 
   if (unread.length > 0) {
     const links = unread.map((r) => `- ${r.source}`).join("\n");
     blocks.push(
-      `[참고 링크 — 내용 미확인]\n${links}\n※ 위 링크의 내용은 확인되지 않았습니다. 링크에 적혀 있을 법한 내용을 추측해서 쓰지 마세요.`,
+      `[3-1. 참고 링크 — 내용 미확인]\n${links}\n※ 위 링크의 본문은 수집하지 못했습니다. 주소만 전달된 것이니, 링크에 적혀 있을 법한 내용을 추측해서 쓰지 마세요. 이 링크를 읽은 것처럼 서술하지 마세요.`,
     );
   }
 
@@ -88,71 +89,148 @@ function constraintBlock(constraints?: AiBlogConstraints): string {
     constraints.includeFaq ? "- FAQ를 반드시 포함한다." : "",
   ].filter(Boolean);
 
-  return [`[반드시 지킬 요청사항]\n${constraints.raw}`, ...rules].join("\n");
+  return [
+    `[1. 추가 요청사항 — 가장 우선해서 지킬 것]\n${constraints.raw}`,
+    ...rules,
+  ].join("\n");
 }
 
 /**
- * STEP 1 입력 → 원고 생성 프롬프트.
+ * 원고 생성 시스템 프롬프트 — 역할과 지켜야 할 원칙.
  *
- * 입력값 우선순위(주제 → 참고자료 → 추가 요청사항 → 키워드 → 업종 …)를
- * 프롬프트의 서술 순서로 그대로 옮긴다.
+ * 입력값(주제·요청사항 등)은 여기 넣지 않는다. 시스템 프롬프트는 요청마다
+ * 바뀌지 않아야 프롬프트 캐시가 살아 있고, 사용자 입력은 user 메시지로 분리해야
+ * 지시와 데이터의 경계가 분명해진다.
+ */
+export function buildSystemPrompt(): string {
+  return [
+    "당신은 네이버 블로그에 발행할 정보성 콘텐츠를 쓰는 전문 한국어 콘텐츠 에디터입니다.",
+    "독자가 실제로 판단에 쓸 수 있는 글을 씁니다.",
+    "",
+    "[반드시 지킬 원칙]",
+    "1. 사용자가 준 주제에서 벗어나지 않는다. 주제와 무관한 일반론으로 지면을 채우지 않는다.",
+    "2. 입력되지 않은 사실을 지어내지 않는다. 통계·수치·법령 조문·의학적 효능은 확신해서 쓰지 않는다.",
+    "   근거가 필요하지만 확인되지 않은 부분은 '확인이 필요하다'는 취지로 쓰고 구체적 수치를 만들지 않는다.",
+    "3. 광고성 표현(최고, 무조건, 확실히, 완벽한 등)을 쓰지 않는다. 정보 전달 톤을 유지한다.",
+    "4. 특정 제품을 약하게 언급하라는 요청을 받으면, 본문 대부분은 일반 정보로 채우고",
+    "   제품명은 후반부에서 예시 수준으로 1~2회만 쓴다. 글 전체를 제품 홍보글로 바꾸지 않는다.",
+    "5. 핵심 키워드는 문맥에 맞게 자연스럽게 쓰고, 억지로 반복 삽입하지 않는다.",
+    "6. 같은 표현과 문장을 반복하지 않는다. 문단마다 새로운 정보를 담는다.",
+    "7. 내용이 없는 추상적인 문장으로 글자수를 채우지 않는다.",
+    "   '상황에 따라 다릅니다', '확인하는 것이 좋습니다' 같은 문장만으로 문단을 끝내지 않는다.",
+    "8. 각 문단은 '왜 그런지 → 무엇을 확인해야 하는지 → 어떻게 판단할지' 순서로 구체적으로 쓴다.",
+    "9. 문단은 3~4줄로 끊어 모바일에서 읽기 좋게 쓴다.",
+    "",
+    "[기본 구성]",
+    "제목 / 도입 / 핵심 요약 / 본문 소제목 3~6개 / 표 또는 체크리스트 / FAQ / 마무리",
+    "단, 주제에 맞지 않는 항목은 억지로 넣지 않는다. 표가 어색한 주제라면 표 대신 체크리스트만 써도 된다.",
+    "",
+    "[분야 안내 문구]",
+    "건강·의료·법률·금융처럼 개인 상황에 따라 결론이 달라지는 분야는",
+    "마무리에 전문가 확인을 권하는 안내 문구를 disclaimer 로 덧붙인다.",
+  ].join("\n");
+}
+
+/**
+ * STEP 1 입력 → 원고 생성 프롬프트(user 메시지).
+ *
+ * 블록 순서 = 반영 우선순위.
+ *   ① 추가 요청사항 ② 주제 ③ 확보된 참고자료 ④ 핵심 키워드
+ *   ⑤ 업종 ⑥ 타깃 ⑦ 목적 ⑧ 원고 유형 ⑨ 목표 분량
+ * 앞에 놓인 블록이 뒤의 블록과 충돌하면 앞의 블록을 따른다는 점을 명시한다.
  */
 export function buildArticlePrompt(input: AiBlogInput, options?: ArticlePromptOptions): string {
+  const constraints = constraintBlock(options?.constraints);
+  const references = referenceBlock(options?.resolved ?? []);
+
   const structure =
     options?.outline && options.outline.length > 0
-      ? `제목 / 도입부 / 핵심 요약 3~5개 / ${options.outline.join(" / ")} / 정리 표 / 체크리스트 / FAQ 3개 / 마무리`
-      : "제목 / 도입부 / 핵심 요약 3~5개 / 소제목 3개 이상의 본문 / 정리 표 / 체크리스트 / FAQ 3개 / 마무리";
+      ? `참고 구성안: ${options.outline.join(" / ")}`
+      : "";
 
   return [
-    "당신은 네이버 블로그 상위 노출 경험이 많은 한국어 콘텐츠 에디터입니다.",
-    "아래 조건에 맞춰 그대로 발행할 수 있는 정보성 블로그 원고를 작성하세요.",
+    "아래 조건으로 블로그 원고를 작성해 주세요.",
+    "블록은 반영 우선순위 순서로 적었습니다. 서로 충돌하면 위쪽 블록을 우선합니다.",
     "",
-    `[주제] ${input.topic}`,
-    "이 글은 위 주제를 설명하는 글입니다. 주제와 직접 관련 없는 일반론으로 채우지 마세요.",
+    constraints || "[1. 추가 요청사항] 없음",
     "",
-    referenceBlock(options?.resolved ?? []),
-    constraintBlock(options?.constraints),
+    `[2. 포스팅 주제]\n${input.topic}`,
+    "이 글은 위 주제를 설명하는 글입니다.",
     "",
-    `- 핵심 키워드: ${input.keywords.join(", ")}`,
-    `- 업종/분야: ${categoryLabel(input.category)}`,
-    `- 원고 목적: ${purposeLabel(input.purpose)}`,
-    `- 타깃 독자: ${input.target || "일반 독자"}`,
-    `- 원고 유형: ${articleTypeLabel(input.articleType)}`,
-    `- 목표 분량: 공백 제외 약 ${input.articleLength}자`,
+    references || "[3. 참고자료] 제공된 내용 없음",
     "",
-    "[구성]",
+    `[4. 핵심 키워드] ${input.keywords.join(", ") || "지정 없음"}`,
+    `[5. 업종/분야] ${categoryLabel(input.category)}`,
+    `[6. 타깃 독자] ${input.target || "일반 독자"}`,
+    `[7. 원고 목적] ${purposeLabel(input.purpose)}`,
+    `[8. 원고 유형] ${articleTypeLabel(input.articleType)}`,
+    `[9. 목표 분량] 공백 제외 약 ${input.articleLength}자 (±15% 이내)`,
     structure,
-    "",
-    "[작성 규칙]",
-    "1. 핵심 키워드를 제목과 본문에 자연스럽게 배치한다.",
-    "2. 왜 그런지 → 무엇을 확인해야 하는지 → 어떻게 판단할지 순서로 구체적으로 쓴다.",
-    "3. 의미 없는 일반론 문장을 반복하지 않는다.",
-    "4. 확인되지 않은 수치·법령·효능을 지어내지 않는다.",
-    "5. 문단은 3~4줄로 끊어 모바일에서 읽기 좋게 작성한다.",
   ]
     .filter(Boolean)
     .join("\n");
 }
 
-/** 원고 수정 프롬프트 */
+/* ------------------------------------------------------------------ */
+/* 원고 수정 프롬프트                                                   */
+/* ------------------------------------------------------------------ */
+
+/** 편집기가 쓰는 마크다운 규칙 — 수정 결과도 이 형식을 유지해야 파서가 동작한다 */
+export function markdownFormatSpec(): string {
+  return [
+    "[본문 마크다운 형식 — 반드시 지킬 것]",
+    `- 큰 블록 제목은 "## ${BLOCK.summary}", "## ${BLOCK.table}", "## ${BLOCK.checklist}", "## ${BLOCK.faq}", "## ${BLOCK.outro}" 를 사용한다.`,
+    '- 본문 소제목은 "### 1. 소제목" 처럼 ### 와 번호를 쓴다.',
+    '- 목록은 "- 내용", 체크리스트는 "- [ ] 내용" 으로 쓴다.',
+    '- 표는 "| 항목 | 내용 |" 형식의 마크다운 표로 쓰고, 두 번째 줄에 "| --- | --- |" 를 넣는다.',
+    '- FAQ 는 "**Q. 질문**" 다음 줄에 "A. 답변" 으로 쓴다.',
+    "- 제목(H1)은 본문에 넣지 않는다. 제목은 title 필드로만 돌려준다.",
+  ].join("\n");
+}
+
+/** 원고 수정 시스템 프롬프트 */
+export function buildReviseSystemPrompt(): string {
+  return [
+    "당신은 한국어 블로그 원고를 다듬는 전문 에디터입니다.",
+    "",
+    "[가장 중요한 원칙]",
+    "사용자가 직접 고쳐 놓은 문장이 있을 수 있습니다.",
+    "요청받은 부분만 바꾸고, 그 외의 문장·문단·순서는 원문 그대로 유지하세요.",
+    "요청과 무관한 문장을 임의로 다시 쓰거나 삭제하지 않습니다.",
+    "",
+    "[그 밖의 원칙]",
+    "- 주제와 사실관계를 바꾸지 않는다. 새로운 수치나 근거를 지어내지 않는다.",
+    "- 광고성 표현을 늘리지 않는다.",
+    "- 전체 구조(블록 순서)를 유지한다. 요청이 구조 변경일 때만 바꾼다.",
+    "",
+    markdownFormatSpec(),
+  ].join("\n");
+}
+
+/** 원고 수정 프롬프트(user 메시지) */
 export function buildRevisePrompt(
   draft: AiBlogDraft,
   instruction: AiBlogReviseInstruction,
   input: AiBlogInput,
 ): string {
   const request = instruction.action === "custom" ? (instruction.note ?? "") : instruction.label;
+
   return [
-    "아래 블로그 원고를 요청에 맞게 수정하세요. 주제와 사실관계는 유지합니다.",
+    `[수정 요청] ${request}`,
     "",
-    `[요청] ${request}`,
-    `[주제] ${input.topic}`,
-    `[핵심 키워드] ${input.keywords.join(", ")}`,
-    `[타깃 독자] ${input.target || "일반 독자"}`,
+    "[유지해야 할 맥락]",
+    `- 주제: ${input.topic}`,
+    `- 핵심 키워드: ${input.keywords.join(", ") || "지정 없음"}`,
+    `- 타깃 독자: ${input.target || "일반 독자"}`,
+    `- 업종/분야: ${categoryLabel(input.category)}`,
+    input.requestNotes ? `- 최초 요청사항: ${input.requestNotes}` : "",
     "",
-    `[제목]\n${draft.title}`,
+    `[현재 제목]\n${draft.title}`,
     "",
-    `[본문]\n${draft.body}`,
-  ].join("\n");
+    `[현재 본문]\n${draft.body}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 /* ------------------------------------------------------------------ */

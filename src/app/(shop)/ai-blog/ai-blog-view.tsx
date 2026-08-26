@@ -29,6 +29,7 @@ import type {
   AiBlogInput,
   AiBlogProject,
   AiBlogReviseInstruction,
+  AiBlogSource,
 } from "@/lib/ai-blog/types";
 import { checkTopicRelevance } from "@/lib/ai-blog/validate";
 import { AI_BLOG_TOOL } from "@/lib/domain/service-tools";
@@ -77,6 +78,8 @@ export function AiBlogView() {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [input, setInput] = useState<AiBlogInput>(DEFAULT_INPUT);
   const [draft, setDraft] = useState<AiBlogDraft | null>(null);
+  // 원고를 실제 AI 가 만들었는지 템플릿 Mock 이 만들었는지 (배지 표시용)
+  const [articleSource, setArticleSource] = useState<AiBlogSource>("AI");
   const [generating, setGenerating] = useState(false);
   const [revisingLabel, setRevisingLabel] = useState<string | null>(null);
   const [imageOptions, setImageOptions] = useState<ImageOptionValue>(DEFAULT_IMAGE_OPTIONS);
@@ -118,6 +121,7 @@ export function AiBlogView() {
       const article = await getAiBlogService().generateBlogArticle(input);
       const nextDraft = articleToDraft(article);
       setDraft(nextDraft);
+      setArticleSource(article.source);
       setAssets([]);
       persist({
         generatedArticle: article,
@@ -203,6 +207,7 @@ export function AiBlogView() {
       project.editedArticle ??
       (project.generatedArticle ? articleToDraft(project.generatedArticle) : null);
     setDraft(restored);
+    setArticleSource(project.generatedArticle?.source ?? "AI");
     setAssets(project.images);
     setImageOptions({
       types: project.imageTypes.length > 0 ? project.imageTypes : DEFAULT_IMAGE_OPTIONS.types,
@@ -220,6 +225,7 @@ export function AiBlogView() {
     setProjectId(null);
     setInput(DEFAULT_INPUT);
     setDraft(null);
+    setArticleSource("AI");
     setAssets([]);
     setImageOptions(DEFAULT_IMAGE_OPTIONS);
     setStep(1);
@@ -274,6 +280,7 @@ export function AiBlogView() {
             draft={draft}
             input={input}
             charCount={countChars(draft.body)}
+            demo={articleSource === "MOCK"}
             relevance={relevance ?? checkTopicRelevance(draft, input)}
             constraintLabels={constraints.labels}
             unreadUrlCount={unreadUrlCount}
@@ -290,6 +297,7 @@ export function AiBlogView() {
             draft={draft}
             input={input}
             relevance={relevance ?? checkTopicRelevance(draft, input)}
+            demo={articleSource === "MOCK"}
             onDraftChange={setDraft}
             onRevise={revise}
             revisingLabel={revisingLabel}

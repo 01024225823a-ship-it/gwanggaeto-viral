@@ -115,9 +115,46 @@ src/
 - React Compiler가 켜져 있어 `useMemo`/`useCallback` 수동 메모이제이션은 사용하지 않습니다.
   같은 이유로 렌더 중 함수 호출로 아이콘 컴포넌트를 만들지 않고 맵을 직접 조회합니다.
 
+## AI 블로그 콘텐츠 제작 (Claude API)
+
+`/ai-blog` 의 원고 생성·수정은 Anthropic Claude 를 사용합니다.
+호출 경로는 **브라우저 → 우리 서버 라우트 → Anthropic API** 이며, API Key 는 서버에서만 읽습니다.
+
+| 라우트 | 역할 |
+|---|---|
+| `POST /api/ai-blog/generate` | 입력값으로 원고 생성 |
+| `POST /api/ai-blog/revise` | 현재 원고를 요청에 맞게 수정 |
+
+### 환경변수
+
+로컬은 `.env.example` 을 `.env.local` 로 복사해 채웁니다. (`.env*` 는 커밋되지 않습니다)
+
+| 변수 | 필수 | 기본값 | 설명 |
+|---|---|---|---|
+| `ANTHROPIC_API_KEY` | provider=claude 일 때 필수 | — | 서버 전용. `NEXT_PUBLIC_` 접두사 금지 |
+| `AI_BLOG_PROVIDER` | | `claude` | `claude` \| `mock` |
+| `ANTHROPIC_MODEL` | | `claude-sonnet-5` | 사용할 모델 |
+| `AI_BLOG_EFFORT` | | (미설정) | `low`\|`medium`\|`high`\|`xhigh`\|`max` — 응답이 느리면 낮춘다 |
+| `AI_BLOG_RATE_LIMIT_PER_MINUTE` | | `10` | 계정당 분당 호출 수 |
+
+`AI_BLOG_PROVIDER=claude` 인데 키가 없으면 **조용히 Mock 으로 넘어가지 않고** 설정 오류를 돌려줍니다.
+오프라인 개발이나 장애 대응 시에는 `AI_BLOG_PROVIDER=mock` 을 명시하세요.
+
+Vercel 에서는 Project → Settings → Environment Variables 에 같은 이름으로 등록합니다.
+
+### 교체 지점
+
+- 실제 구현: `lib/ai-blog/server/claude-service.ts`
+- Mock 구현: `lib/ai-blog/mock-service.ts` (삭제하지 않고 유지)
+- 선택 로직: `lib/ai-blog/server/resolve-service.ts`
+- 호출 자격·사용량 제한: `lib/ai-blog/server/guard.ts` (실제 인증 도입 시 이 파일만 교체)
+- 이미지 생성은 아직 Mock 입니다 (`lib/ai-blog/mock-images.ts`).
+
 ## 다음 단계
 
-- 서버/DB 연동 및 실제 인증
+- 서버/DB 연동 및 실제 인증 (AI 라우트의 `requireCustomer` 교체 포함)
+- 참고자료 URL 본문 추출 (현재는 주소만 저장)
+- 이미지 생성 API 연동
 - PG 결제 연동 (포인트 충전)
 - 일부 상품의 외부 API·자동화 연동
 - 알림(이메일/카카오) 발송

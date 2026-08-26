@@ -30,6 +30,7 @@ export function ArticleEditor({
   draft,
   input,
   relevance,
+  demo,
   onDraftChange,
   onRevise,
   revisingLabel,
@@ -41,6 +42,8 @@ export function ArticleEditor({
   input: AiBlogInput;
   /** 편집 중인 원고의 주제 반영도 (수정할 때마다 다시 계산된다) */
   relevance: RelevanceReport;
+  /** 템플릿 Mock 이 만든 원고인지 */
+  demo: boolean;
   onDraftChange: (next: AiBlogDraft) => void;
   onRevise: (instruction: AiBlogReviseInstruction) => void;
   /** AI 수정 진행 중인 항목명 (없으면 null) */
@@ -164,7 +167,7 @@ export function ArticleEditor({
             <Sparkles className="size-4 text-primary" />
             AI 빠른 수정
           </h3>
-          <AiDemoBadge />
+          {demo && <AiDemoBadge />}
           {revisingLabel && (
             <span className="ml-auto inline-flex items-center gap-1.5 text-[13px] text-primary">
               <LoaderCircle className="size-3.5 animate-spin" />

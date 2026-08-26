@@ -19,6 +19,17 @@ function readStoredAccountId(): string | null {
   }
 }
 
+/**
+ * React 밖(서버 라우트 호출 등)에서 현재 로그인 계정 ID가 필요할 때 쓴다.
+ *
+ * 이 값은 프로토타입 데모 세션이라 위조할 수 있다. 서버는 이 ID를 계정 목록과
+ * 대조하는 정도만 하고, 실제 인증으로 교체할 때는 lib/ai-blog/server/guard.ts 와
+ * 이 함수를 함께 바꾼다.
+ */
+export function currentAccountId(): string | null {
+  return readStoredAccountId();
+}
+
 interface SessionValue {
   /** localStorage 복원이 끝났는지 여부 (하이드레이션 불일치 방지) */
   ready: boolean;

@@ -1,4 +1,4 @@
-import { mockAiBlogService } from "@/lib/ai-blog/mock-service";
+import { httpAiBlogService } from "@/lib/ai-blog/http-service";
 import type {
   AiBlogArticle,
   AiBlogDraft,
@@ -13,14 +13,16 @@ import type {
  * AI 연동 지점.
  *
  * 화면(컴포넌트)은 반드시 getAiBlogService()로만 AI를 호출한다.
- * 지금은 Mock 구현이 연결되어 있고, 실제 API(OpenAI/Claude/Gemini 등)를 붙일 때는
  *
- *   1) AiBlogService를 구현한 새 모듈(예: lib/ai-blog/claude-service.ts)을 만들고
- *   2) 서버 라우트(app/api/ai-blog/...)를 통해 호출하도록 감싼 뒤
- *   3) 앱 초기화 시점에 setAiBlogService(newService)를 호출한다
+ * 브라우저에서는 httpAiBlogService(서버 라우트 호출)가 기본으로 연결된다.
+ *   브라우저 → POST /api/ai-blog/generate | revise → Anthropic API
  *
- * 화면 코드는 한 줄도 바꾸지 않아도 된다.
- * API Key는 클라이언트에 두지 말고 서버 라우트에서만 사용할 것.
+ * 실제 구현체는 서버가 고른다 (환경변수 AI_BLOG_PROVIDER).
+ *   claude → lib/ai-blog/server/claude-service.ts (ClaudeAiBlogService)
+ *   mock   → lib/ai-blog/mock-service.ts          (MockAiBlogService)
+ *
+ * API Key는 클라이언트에 절대 두지 않는다. 서버 라우트에서만 읽는다.
+ * setAiBlogService()는 테스트나 특수한 환경에서 구현을 바꿔 끼울 때 쓴다.
  */
 export interface AiBlogService {
   /** 현재 구현이 실제 AI인지 Mock인지 — 화면에 데모 배지를 띄우는 데 쓴다 */
@@ -40,9 +42,9 @@ export interface AiBlogService {
   generateImages(request: AiBlogImageRequest): Promise<AiBlogImageResult>;
 }
 
-let current: AiBlogService = mockAiBlogService;
+let current: AiBlogService = httpAiBlogService;
 
-/** 실제 AI 서비스로 교체 (앱 초기화 시 1회 호출) */
+/** 구현 교체 (테스트·특수 환경에서 1회 호출) */
 export function setAiBlogService(service: AiBlogService): void {
   current = service;
 }
