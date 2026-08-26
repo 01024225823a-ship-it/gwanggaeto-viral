@@ -5,10 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { PackageSearch, Search } from "lucide-react";
 import { CategoryGrid, RECOMMEND_SLUG } from "@/components/customer/category-grid";
 import { ProductCard } from "@/components/customer/product-card";
+import { ServiceToolCard } from "@/components/customer/service-tool-card";
 import { EmptyState } from "@/components/common/empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { activeCategories, findCategory, visibleProducts } from "@/lib/domain/selectors";
+import { filterServiceTools } from "@/lib/domain/service-tools";
 import { useData } from "@/lib/store/data";
 
 export function CustomerServicesView() {
@@ -34,6 +36,14 @@ export function CustomerServicesView() {
       product.description.toLowerCase().includes(q) ||
       (findCategory(data, product.categoryId)?.name.toLowerCase().includes(q) ?? false)
     );
+  });
+
+  // 도구형 서비스는 상품과 같은 필터를 적용해 목록 맨 앞에 노출한다
+  const tools = filterServiceTools({
+    categorySlug: categorySlug && categorySlug !== RECOMMEND_SLUG ? categorySlug : undefined,
+    query: query,
+    recommendedOnly: categorySlug === RECOMMEND_SLUG,
+    activeCategorySlugs: categories.map((c) => c.slug),
   });
 
   const heading = q
@@ -75,7 +85,9 @@ export function CustomerServicesView() {
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div>
             <h1 className="text-lg font-bold tracking-tight sm:text-xl">{heading}</h1>
-            <p className="num mt-1 text-[13px] text-muted-foreground">{rows.length}개 서비스</p>
+            <p className="num mt-1 text-[13px] text-muted-foreground">
+            {rows.length + tools.length}개 서비스
+          </p>
           </div>
           {(category || q || categorySlug) && (
             <Button variant="outline" size="sm" onClick={() => router.push("/services")}>
@@ -90,7 +102,7 @@ export function CustomerServicesView() {
           </p>
         )}
 
-        {rows.length === 0 ? (
+        {rows.length === 0 && tools.length === 0 ? (
           <EmptyState
             icon={PackageSearch}
             title="찾는 서비스가 없습니다"
@@ -103,6 +115,11 @@ export function CustomerServicesView() {
           />
         ) : (
           <ul className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {tools.map((tool) => (
+              <li key={tool.id} className="flex">
+                <ServiceToolCard tool={tool} className="w-full" />
+              </li>
+            ))}
             {rows.map((product) => (
               <li key={product.id} className="flex">
                 <ProductCard

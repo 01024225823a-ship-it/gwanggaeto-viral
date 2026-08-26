@@ -8,9 +8,11 @@ import { ArrowRight, PackageSearch, Search, Truck, Wallet } from "lucide-react";
 import { CategoryGrid } from "@/components/customer/category-grid";
 import { CustomerStatusBadge } from "@/components/customer/customer-status-badge";
 import { ProductCard } from "@/components/customer/product-card";
+import { ServiceToolBanner, ServiceToolCard } from "@/components/customer/service-tool-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { activeCategories, customerOrders, findCategory, visibleProducts } from "@/lib/domain/selectors";
+import { filterServiceTools } from "@/lib/domain/service-tools";
 import type { Order } from "@/lib/domain/types";
 import { formatDate, formatNumber, formatPoint } from "@/lib/format";
 import { useData } from "@/lib/store/data";
@@ -24,7 +26,12 @@ export function CustomerHomeView() {
 
   const categories = activeCategories(data);
   const products = visibleProducts(data);
-  const recommended = products.filter((p) => p.recommended).slice(0, 8);
+  const recommended = products.filter((p) => p.recommended).slice(0, 7);
+  // 도구형 서비스(AI 블로그 콘텐츠 제작)는 추천 목록 맨 앞에 함께 노출한다
+  const tools = filterServiceTools({
+    recommendedOnly: true,
+    activeCategorySlugs: categories.map((c) => c.slug),
+  });
 
   // 개인화 영역(진행중 주문·보유 포인트)은 로그인한 광고주에게만 보여준다
   const customerId = account?.role === "CUSTOMER" ? account.customerId : undefined;
@@ -74,6 +81,11 @@ export function CustomerHomeView() {
         <CategoryGrid categories={categories} className="mt-4" />
       </section>
 
+      {/* 도구형 서비스 안내 */}
+      {tools.map((tool) => (
+        <ServiceToolBanner key={tool.id} tool={tool} />
+      ))}
+
       {/* 진행중인 주문 */}
       {activeOrders.length > 0 && (
         <section>
@@ -99,6 +111,11 @@ export function CustomerHomeView() {
           action={<MoreLink href="/services" label="전체 서비스 보기" />}
         />
         <ul className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {tools.map((tool) => (
+            <li key={tool.id} className="flex">
+              <ServiceToolCard tool={tool} className="w-full" />
+            </li>
+          ))}
           {recommended.map((product) => (
             <li key={product.id} className="flex">
               <ProductCard

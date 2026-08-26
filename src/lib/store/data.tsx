@@ -23,7 +23,7 @@ import { createSeedData } from "@/lib/mock/seed";
 import { useIsHydrated } from "@/lib/store/use-hydrated";
 
 // 카탈로그(카테고리·상품) 구조가 바뀌면 버전을 올려 이전 저장본을 버린다
-const STORAGE_KEY = "gkt.data.v2";
+const STORAGE_KEY = "gkt.data.v3";
 
 /**
  * 하이드레이션 전에 사용하는 시드 스냅샷.

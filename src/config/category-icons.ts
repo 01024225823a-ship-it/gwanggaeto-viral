@@ -2,7 +2,6 @@ import type { LucideIcon } from "lucide-react";
 import {
   Camera,
   Flame,
-  Gift,
   LayoutGrid,
   MessageCircle,
   MessagesSquare,
@@ -12,6 +11,7 @@ import {
   Package,
   Sparkles,
   Star,
+  WandSparkles,
 } from "lucide-react";
 
 /**
@@ -35,7 +35,7 @@ export const CATEGORY_ICONS: Record<string, LucideIcon> = {
   news: Newspaper,
   review: Star,
   instagram: Camera,
-  "sns-event": Gift,
+  "ai-blog": WandSparkles,
   package: Package,
   etc: LayoutGrid,
 };

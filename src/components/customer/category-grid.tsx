@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CATEGORY_ICONS, DEFAULT_CATEGORY_ICON, RECOMMEND_ICON } from "@/config/category-icons";
+import { categoryHref } from "@/lib/domain/service-tools";
 import type { Category } from "@/lib/domain/types";
 import { cn } from "@/lib/utils";
 
@@ -20,11 +21,18 @@ export function CategoryGrid({
   className?: string;
 }) {
   const items = [
-    { slug: RECOMMEND_SLUG, name: "추천서비스", icon: RECOMMEND_ICON },
+    {
+      slug: RECOMMEND_SLUG,
+      name: "추천서비스",
+      icon: RECOMMEND_ICON,
+      href: `/services?category=${RECOMMEND_SLUG}`,
+    },
     ...categories.map((c) => ({
       slug: c.slug,
       name: c.name,
       icon: CATEGORY_ICONS[c.slug] ?? DEFAULT_CATEGORY_ICON,
+      // 도구형 서비스는 상품 목록 대신 전용 화면으로 보낸다
+      href: categoryHref(c.slug),
     })),
   ];
 
@@ -36,7 +44,7 @@ export function CategoryGrid({
         return (
           <li key={item.slug}>
             <Link
-              href={`/services?category=${item.slug}`}
+              href={item.href}
               aria-current={active ? "page" : undefined}
               className={cn(
                 "flex h-full flex-col items-center justify-start gap-2 rounded-2xl border px-2 py-4 text-center transition-colors",

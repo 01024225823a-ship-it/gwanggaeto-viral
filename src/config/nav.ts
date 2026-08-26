@@ -16,6 +16,7 @@ import {
   UserCircle,
   Users,
   Wallet,
+  WandSparkles,
 } from "lucide-react";
 import type { Role } from "@/lib/domain/types";
 
@@ -108,6 +109,7 @@ export interface ShopNavItem {
 
 export const SHOP_NAV: ShopNavItem[] = [
   { label: "서비스", href: "/", icon: ShoppingBag, exact: true },
+  { label: "AI 콘텐츠 제작", href: "/ai-blog", icon: WandSparkles },
   { label: "주문내역", href: "/orders", icon: ClipboardList, authOnly: true },
   { label: "이용안내", href: "/guide", icon: BookOpen },
   { label: "문의하기", href: "/support", icon: Headphones },

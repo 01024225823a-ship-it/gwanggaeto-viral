@@ -105,10 +105,12 @@ const categories: Category[] = [
     active: true,
   },
   {
-    id: "cat-sns-event",
-    name: "SNS 이벤트",
-    slug: "sns-event",
-    description: "오픈·공유 이벤트를 기획하고 참여자를 모읍니다.",
+    // 도구형 서비스 자리 — 상품이 아니라 전용 화면(/ai-blog)으로 진입한다.
+    // lib/domain/service-tools.ts 의 categorySlug와 슬러그를 맞춰야 한다.
+    id: "cat-ai-blog",
+    name: "AI 블로그 콘텐츠 제작",
+    slug: "ai-blog",
+    description: "전문적인 블로그 원고부터 인포그래픽·카드뉴스까지 AI로 한 번에 제작합니다.",
     sortOrder: 9,
     active: true,
   },
@@ -533,46 +535,6 @@ const products: Product[] = [
     createdAt: at(-88),
   },
 
-  /* SNS 이벤트 */
-  {
-    id: "prd-event-open",
-    categoryId: "cat-sns-event",
-    name: "SNS 오픈이벤트 운영",
-    description: "오픈·리뉴얼 이벤트를 기획하고 진행까지 대행합니다.",
-    price: 300_000,
-    cost: 190_000,
-    minQty: 1,
-    maxQty: 10,
-    unitLabel: "건",
-    defaultPartnerId: "ptn-01",
-    leadDays: 14,
-    visible: true,
-    recommended: false,
-    requiresUrl: false,
-    allowsFile: true,
-    guide: ["경품과 이벤트 기간을 요청사항에 적어주세요."],
-    createdAt: at(-85),
-  },
-  {
-    id: "prd-event-share",
-    categoryId: "cat-sns-event",
-    name: "공유 이벤트 참여자 모집",
-    description: "게시물 공유·댓글 이벤트에 참여할 실사용자를 모읍니다.",
-    price: 3_000,
-    cost: 1_900,
-    minQty: 50,
-    maxQty: 5_000,
-    unitLabel: "명",
-    defaultPartnerId: "ptn-01",
-    leadDays: 7,
-    visible: true,
-    recommended: false,
-    requiresUrl: true,
-    allowsFile: false,
-    urlPlaceholder: "이벤트 게시물 주소",
-    createdAt: at(-85),
-  },
-
   /* 패키지 */
   {
     id: "prd-pkg-open",
@@ -734,7 +696,7 @@ const partners: Partner[] = [
     manager: "박서연",
     phone: "010-0000-1001",
     email: "partner@demo.gwanggaeto.io",
-    categoryIds: ["cat-youtube", "cat-instagram", "cat-sns-event"],
+    categoryIds: ["cat-youtube", "cat-instagram"],
     unitCosts: [
       { productId: "prd-yt-shorts", cost: 11_500 },
       { productId: "prd-yt-shorts-bulk", cost: 8_600 },
