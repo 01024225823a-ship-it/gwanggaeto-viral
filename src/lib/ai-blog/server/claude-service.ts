@@ -13,6 +13,7 @@ import { getReferenceResolver } from "@/lib/ai-blog/references";
 import type { AiBlogService } from "@/lib/ai-blog/service";
 import type { AiBlogServerConfig } from "@/lib/ai-blog/server/config";
 import { AiBlogGenerationError } from "@/lib/ai-blog/server/errors";
+import { planVisualsWithClaude } from "@/lib/ai-blog/server/visual-planner";
 import type {
   AiBlogArticle,
   AiBlogDraft,
@@ -269,7 +270,12 @@ export function createClaudeAiBlogService(config: AiBlogServerConfig): AiBlogSer
       };
     },
 
-    // 이미지 생성 API 는 이번 단계에서 연결하지 않는다 (기존 Mock 유지)
+    // 최종 원고를 분석해 이미지용 기획안을 만든다 (원고 문장 재사용을 막는 핵심 단계)
+    planVisualContent(request) {
+      return planVisualsWithClaude(client, config, request);
+    },
+
+    // 이미지 생성 API 는 이번 단계에서 연결하지 않는다 (기획안 기반 Mock 미리보기 유지)
     generateImages(request) {
       return generateMockImages(request);
     },

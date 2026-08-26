@@ -1,6 +1,6 @@
 import { generateMockImages } from "@/lib/ai-blog/mock-images";
 import type { AiBlogService } from "@/lib/ai-blog/service";
-import type { AiBlogArticle, AiBlogDraft } from "@/lib/ai-blog/types";
+import type { AiBlogArticle, AiBlogDraft, VisualPlanResult } from "@/lib/ai-blog/types";
 import { currentAccountId } from "@/lib/store/session";
 
 /**
@@ -75,7 +75,19 @@ export const httpAiBlogService: AiBlogService = {
     return next;
   },
 
-  // 이미지 생성은 아직 API 를 붙이지 않았다 — 브라우저에서 Mock 으로 만든다
+  async planVisualContent(request) {
+    const { result } = await post<{ result: VisualPlanResult }>("/api/ai-blog/plan-visuals", {
+      accountId: requireAccountId(),
+      input: request.input,
+      draft: request.draft,
+      types: request.types,
+      cardCount: request.cardCount,
+      exclude: request.exclude ?? [],
+    });
+    return result;
+  },
+
+  // 이미지 생성은 아직 API 를 붙이지 않았다 — 기획안을 그대로 미리보기로 렌더링한다
   generateImages(request) {
     return generateMockImages(request);
   },

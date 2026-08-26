@@ -10,6 +10,7 @@ import type { AiBlogConstraints } from "@/lib/ai-blog/constraints";
 import type { CategoryPlaybook, PlaybookContext, PlaybookSection } from "@/lib/ai-blog/playbooks";
 import { TYPE_SECTION_ORDER, playbookOf, sectionHeading } from "@/lib/ai-blog/playbooks";
 import { generateMockImages } from "@/lib/ai-blog/mock-images";
+import { planVisualsWithMock } from "@/lib/ai-blog/mock-visual-planner";
 import { getReferenceResolver, usablePoints } from "@/lib/ai-blog/references";
 import type { ResolvedReference } from "@/lib/ai-blog/references";
 import type { AiBlogService } from "@/lib/ai-blog/service";
@@ -590,6 +591,11 @@ export const mockAiBlogService: AiBlogService = {
   async reviseBlogArticle(draft, instruction, input) {
     await delay(800);
     return applyRevision(resolveAction(instruction), draft, input, instruction);
+  },
+
+  async planVisualContent(request) {
+    await delay(900);
+    return planVisualsWithMock(request);
   },
 
   generateImages(request) {

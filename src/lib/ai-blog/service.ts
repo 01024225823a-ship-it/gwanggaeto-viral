@@ -7,6 +7,8 @@ import type {
   AiBlogInput,
   AiBlogReviseInstruction,
   AiBlogSource,
+  VisualPlanRequest,
+  VisualPlanResult,
 } from "@/lib/ai-blog/types";
 
 /**
@@ -38,7 +40,15 @@ export interface AiBlogService {
     input: AiBlogInput,
   ): Promise<AiBlogDraft>;
 
-  /** STEP 4 — 최종 원고 기준으로 이미지 프롬프트와 결과 이미지를 만든다 */
+  /**
+   * STEP 4-1 — 최종 원고를 분석해 "이미지로 만들 관점"을 기획한다.
+   *
+   * 이미지에 들어갈 내용은 전부 이 단계에서 정해진다.
+   * 원고 문장을 그대로 잘라 쓰지 않기 위해, 이미지 제작 앞에 반드시 이 단계를 둔다.
+   */
+  planVisualContent(request: VisualPlanRequest): Promise<VisualPlanResult>;
+
+  /** STEP 4-2 — 선택된 기획안으로 이미지 프롬프트와 결과 이미지를 만든다 */
   generateImages(request: AiBlogImageRequest): Promise<AiBlogImageResult>;
 }
 

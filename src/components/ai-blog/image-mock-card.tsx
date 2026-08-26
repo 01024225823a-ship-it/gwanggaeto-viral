@@ -115,9 +115,14 @@ export function ImageMockCard({
           </div>
         ) : (
           <>
-            <p className={cn("line-clamp-3 text-[15px] leading-snug font-bold", theme.title)}>
-              {asset.title}
-            </p>
+            <div className="flex flex-col gap-1">
+              <p className={cn("line-clamp-3 text-[15px] leading-snug font-bold", theme.title)}>
+                {asset.title}
+              </p>
+              {asset.subtitle && (
+                <p className={cn("line-clamp-2 text-[11px]", theme.footnote)}>{asset.subtitle}</p>
+              )}
+            </div>
             <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
               {asset.lines.map((line, i) => (
                 <li key={`${line}-${i}`} className="flex gap-2">

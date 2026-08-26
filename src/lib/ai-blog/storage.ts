@@ -113,6 +113,7 @@ export function createAiBlogProject(input: AiBlogInput, userId?: string): AiBlog
     imageStyle: "clean",
     thumbnailRatio: "1:1",
     cardCount: 6,
+    visualPlans: [],
     imagePrompts: [],
     images: [],
     createdAt: at,

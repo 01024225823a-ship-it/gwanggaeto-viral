@@ -1,16 +1,14 @@
-import { buildImagePrompts } from "@/lib/ai-blog/prompts";
 import type { AiBlogImageAsset, AiBlogImageRequest, AiBlogImageResult } from "@/lib/ai-blog/types";
+import { buildImagePrompts } from "@/lib/ai-blog/visual-prompts";
 
 /**
  * 이미지 제작 Mock.
  *
- * 실제 이미지 생성 API는 아직 연결하지 않는다. 여기서는 최종 원고에서
- * 이미지 프롬프트를 만들고, 그 구성을 그대로 담은 "데모 미리보기" 자산을 돌려준다.
- * (원고 생성이 Claude API로 바뀌어도 이미지 단계는 이 구현을 계속 쓴다)
+ * 실제 이미지 생성 API는 아직 연결하지 않는다. 여기서는 선택된 기획안(VisualPlan)을
+ * 이미지 프롬프트로 바꾸고, 그 구성을 그대로 담은 "데모 미리보기" 자산을 돌려준다.
  *
- * 원고 생성 Mock(mock-service.ts)과 분리해 둔 이유:
- * 실제 API를 쓰는 경로에서도 이미지 단계는 이 모듈만 필요하므로,
- * 업종 플레이북 같은 무거운 모듈을 클라이언트 번들에 끌고 오지 않기 위함이다.
+ * 중요한 점은 미리보기에 들어가는 문구도 원고가 아니라 **기획안**에서 나온다는 것이다.
+ * 그래서 실제 이미지 API를 붙여도 화면에 보이는 내용이 달라지지 않는다.
  */
 
 function delay(ms: number): Promise<void> {
@@ -26,12 +24,13 @@ function toAssets(request: AiBlogImageRequest, stamp: number): AiBlogImageAsset[
   for (const prompt of prompts) {
     if (prompt.type === "infographic") {
       assets.push({
-        id: `img-${stamp}-infographic`,
+        id: `img-${stamp}-${prompt.planId}`,
         type: "infographic",
         index: 0,
-        title: request.outline.title,
-        lines: prompt.points,
-        footnote: prompt.footnote,
+        title: prompt.headline,
+        subtitle: prompt.subheadline,
+        lines: prompt.items.map((item) => `${item.title} — ${item.description}`),
+        footnote: prompt.footer,
         ratio: prompt.ratio,
         style: prompt.style,
         prompt: prompt.text,
@@ -43,12 +42,12 @@ function toAssets(request: AiBlogImageRequest, stamp: number): AiBlogImageAsset[
     if (prompt.type === "cardnews") {
       for (const card of prompt.cards) {
         assets.push({
-          id: `img-${stamp}-card-${card.index}`,
+          id: `img-${stamp}-${prompt.planId}-${card.page}`,
           type: "cardnews",
-          index: card.index,
-          title: card.title,
-          lines: card.lines,
-          footnote: `${card.index} / ${prompt.cards.length}`,
+          index: card.page,
+          title: card.headline,
+          lines: card.body ? [card.body] : [],
+          footnote: `${card.page} / ${prompt.cards.length}`,
           ratio: prompt.ratio,
           style: prompt.style,
           prompt: prompt.text,
@@ -59,10 +58,10 @@ function toAssets(request: AiBlogImageRequest, stamp: number): AiBlogImageAsset[
     }
 
     assets.push({
-      id: `img-${stamp}-thumbnail`,
+      id: `img-${stamp}-${prompt.planId}`,
       type: "thumbnail",
       index: 0,
-      title: request.outline.title,
+      title: prompt.titleLines.join(" "),
       lines: prompt.titleLines,
       footnote: prompt.subtitle,
       ratio: prompt.ratio,
@@ -76,7 +75,7 @@ function toAssets(request: AiBlogImageRequest, stamp: number): AiBlogImageAsset[
 }
 
 export async function generateMockImages(request: AiBlogImageRequest): Promise<AiBlogImageResult> {
-  await delay(1_500);
+  await delay(1_200);
   const stamp = Date.now();
   return { prompts: buildImagePrompts(request), assets: toAssets(request, stamp) };
 }

@@ -81,7 +81,10 @@ export function checkRateLimit(accountId: string, limitPerMinute: number): void 
 }
 
 /** 향후 사용량 집계를 붙일 지점 — 지금은 호출 사실만 남긴다 */
-export function recordUsage(account: Account, action: "generate" | "revise"): void {
+export function recordUsage(
+  account: Account,
+  action: "generate" | "revise" | "plan-visuals",
+): void {
   // TODO: 사용량/과금 집계가 필요해지면 여기에서 DB 기록으로 연결한다.
   console.info(`[ai-blog] ${action} by ${account.id} (${account.org})`);
 }

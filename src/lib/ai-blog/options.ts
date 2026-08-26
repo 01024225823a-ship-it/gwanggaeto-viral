@@ -6,6 +6,7 @@ import type {
   AiBlogImageType,
   AiBlogPurpose,
   AiBlogReviseAction,
+  VisualType,
 } from "@/lib/ai-blog/types";
 
 /**
@@ -166,6 +167,20 @@ export function imageStyleLabel(id?: AiBlogImageStyle): string {
 
 export function imageTypeLabel(id?: AiBlogImageType): string {
   return AI_BLOG_IMAGE_TYPES.find((t) => t.id === id)?.label ?? "";
+}
+
+/** 시각화 형태 표시명 */
+export const VISUAL_TYPE_LABEL: Record<VisualType, string> = {
+  checklist: "체크리스트",
+  steps: "단계",
+  comparison: "비교",
+  numbers: "숫자",
+  signals: "신호 점검",
+  criteria: "판단 기준",
+};
+
+export function visualTypeLabel(id: VisualType): string {
+  return VISUAL_TYPE_LABEL[id] ?? "";
 }
 
 /** 이미지 타입별 비율 — 썸네일만 사용자가 고른 값을 쓴다 */

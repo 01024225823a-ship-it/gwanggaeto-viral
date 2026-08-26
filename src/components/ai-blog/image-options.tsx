@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Images, Info, LoaderCircle } from "lucide-react";
+import { ArrowRight, Info, LoaderCircle, Sparkles } from "lucide-react";
 import { MultiOptionCards, OptionCards } from "@/components/ai-blog/option-cards";
 import { Field } from "@/components/common/field";
 import { Button } from "@/components/ui/button";
@@ -32,7 +32,7 @@ export function ImagesGenerating() {
       <LoaderCircle className="size-8 animate-spin text-primary" />
       <p className="text-[15px] font-semibold">이미지를 만들고 있어요</p>
       <p className="text-center text-[13px] text-muted-foreground">
-        최종 원고에서 핵심 내용을 뽑아 구성하는 중입니다.
+        선택하신 기획안으로 구성하는 중입니다.
       </p>
     </div>
   );
@@ -40,21 +40,24 @@ export function ImagesGenerating() {
 
 /**
  * STEP 4 — 포스팅 이미지 제작 옵션.
- * 확정된 최종 원고에서 뽑은 정보를 함께 보여줘서 무엇이 이미지에 들어갈지 알 수 있게 한다.
+ *
+ * 여기서는 "무엇을 만들지"만 고른다. 이미지에 들어갈 내용은 다음 단계에서
+ * AI가 원고를 분석해 기획한 뒤 사용자가 고른다.
  */
 export function ImageOptions({
   outline,
   value,
   onChange,
-  onGenerate,
-  generating,
+  onPlan,
+  planning,
   onBack,
 }: {
   outline: AiBlogOutline;
   value: ImageOptionValue;
   onChange: (patch: Partial<ImageOptionValue>) => void;
-  onGenerate: () => void;
-  generating: boolean;
+  /** 이미지 콘텐츠 기획 요청 */
+  onPlan: () => void;
+  planning: boolean;
   onBack: () => void;
 }) {
   function toggleType(type: AiBlogImageType) {
@@ -75,7 +78,9 @@ export function ImageOptions({
   return (
     <div className="flex flex-col gap-5">
       <section className="flex flex-col gap-2 rounded-2xl border border-border bg-surface p-5">
-        <p className="text-[11px] font-medium text-muted-foreground">확정된 최종 원고</p>
+        <p className="text-[11px] font-medium text-muted-foreground">
+          확정된 최종 원고 — AI가 이 원고를 분석해 이미지를 기획합니다
+        </p>
         <p className="text-[15px] font-bold">{outline.title}</p>
         <ul className="mt-1 flex flex-wrap gap-1.5">
           {outline.summary.slice(0, 4).map((point) => (
@@ -157,8 +162,8 @@ export function ImageOptions({
 
       <p className="flex items-start gap-2 rounded-xl bg-muted/60 px-4 py-3 text-[13px] leading-relaxed text-muted-foreground">
         <Info className="mt-0.5 size-4 shrink-0 text-primary" />
-        현재는 실제 이미지 생성 API가 연결되어 있지 않습니다. 이미지 구성과 생성 프롬프트를 만들어
-        데모 미리보기로 보여주며, 이미지 파일 저장은 API 연결 후 사용할 수 있습니다.
+        다음 단계에서 AI가 원고를 분석해 이미지 기획안을 제안합니다. 실제 이미지 생성 API는 아직
+        연결되어 있지 않아, 기획안과 생성 프롬프트를 데모 미리보기로 보여줍니다.
       </p>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
@@ -169,11 +174,11 @@ export function ImageOptions({
           type="button"
           size="lg"
           className="h-12"
-          disabled={generating || value.types.length === 0}
-          onClick={onGenerate}
+          disabled={planning || value.types.length === 0}
+          onClick={onPlan}
         >
-          <Images className="size-4" />
-          {generating ? "만드는 중…" : "이미지 만들기"}
+          <Sparkles className="size-4" />
+          {planning ? "기획하는 중…" : "AI 이미지 기획"}
           <ArrowRight className="size-4" />
         </Button>
       </div>

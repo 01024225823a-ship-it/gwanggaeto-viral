@@ -11,6 +11,7 @@ import { AiBlogInputForm } from "@/components/ai-blog/input-form";
 import { ImageOptions, ImagesGenerating } from "@/components/ai-blog/image-options";
 import type { ImageOptionValue } from "@/components/ai-blog/image-options";
 import { RecentProjects } from "@/components/ai-blog/recent-projects";
+import { VisualPlanPicker, VisualPlanning } from "@/components/ai-blog/visual-plan-picker";
 import { AiBlogResultView } from "@/components/ai-blog/result-view";
 import { articleToDraft, countChars, outlineFromDraft } from "@/lib/ai-blog/article";
 import { parseConstraints } from "@/lib/ai-blog/constraints";
@@ -28,8 +29,12 @@ import type {
   AiBlogImageAsset,
   AiBlogInput,
   AiBlogProject,
+  AiBlogImageType,
   AiBlogReviseInstruction,
   AiBlogSource,
+  VisualOverlapReport,
+  VisualPlan,
+  VisualPlanSet,
 } from "@/lib/ai-blog/types";
 import { checkTopicRelevance } from "@/lib/ai-blog/validate";
 import { AI_BLOG_TOOL } from "@/lib/domain/service-tools";
@@ -85,6 +90,14 @@ export function AiBlogView() {
   const [imageOptions, setImageOptions] = useState<ImageOptionValue>(DEFAULT_IMAGE_OPTIONS);
   const [assets, setAssets] = useState<AiBlogImageAsset[]>([]);
   const [imaging, setImaging] = useState(false);
+
+  // STEP 4-1 이미지 콘텐츠 기획
+  const [planSet, setPlanSet] = useState<VisualPlanSet | null>(null);
+  const [planOverlap, setPlanOverlap] = useState<VisualOverlapReport | null>(null);
+  const [planSource, setPlanSource] = useState<AiBlogSource>("AI");
+  const [selectedPlanIds, setSelectedPlanIds] = useState<Partial<Record<AiBlogImageType, string>>>({});
+  const [seenConcepts, setSeenConcepts] = useState<string[]>([]);
+  const [planning, setPlanning] = useState(false);
 
   const outline = draft ? outlineFromDraft(draft) : null;
   // 추가 요청사항 해석 결과와 주제 반영도는 현재 원고 기준으로 매번 다시 계산한다
@@ -158,17 +171,76 @@ export function AiBlogView() {
     goStep(4);
   }
 
-  async function generateImages() {
+  /** 이미지 구성이 바뀌면 기존 기획안은 버린다 */
+  function changeImageOptions(patch: Partial<ImageOptionValue>) {
+    setImageOptions((prev) => ({ ...prev, ...patch }));
+    if (patch.types || patch.cardCount) {
+      setPlanSet(null);
+      setSelectedPlanIds({});
+      setSeenConcepts([]);
+    }
+  }
+
+  /** 선택된 기획안 목록 */
+  function selectedPlans(): VisualPlan[] {
+    if (!planSet) return [];
+    return imageOptions.types
+      .map((type) => (planSet[type] ?? []).find((plan) => plan.id === selectedPlanIds[type]))
+      .filter((plan): plan is VisualPlan => !!plan);
+  }
+
+  /**
+   * STEP 4-1 — 최종 원고를 분석해 이미지 기획안을 받는다.
+   * more=true 면 이미 본 기획안을 제외하고 다른 각도를 요청한다.
+   */
+  async function planVisuals(more = false) {
     if (!draft) return;
-    setImaging(true);
+    setPlanning(true);
     try {
-      // 최초 생성본이 아니라 "지금 화면의 최종 원고"에서 정보를 추출한다
-      const result = await getAiBlogService().generateImages({
-        outline: outlineFromDraft(draft),
+      const result = await getAiBlogService().planVisualContent({
+        draft,
         input,
         types: imageOptions.types,
-        style: imageOptions.style,
         cardCount: imageOptions.cardCount,
+        exclude: more ? seenConcepts : [],
+      });
+
+      const concepts = Object.values(result.plans)
+        .flat()
+        .map((plan) => plan.concept);
+
+      const nextSelection: Partial<Record<AiBlogImageType, string>> = {};
+      for (const type of imageOptions.types) {
+        const first = (result.plans[type] ?? [])[0];
+        if (first) nextSelection[type] = first.id;
+      }
+
+      setPlanSet(result.plans);
+      setPlanOverlap(result.overlap);
+      setPlanSource(result.source);
+      setSelectedPlanIds(nextSelection);
+      setSeenConcepts((prev) => (more ? [...prev, ...concepts] : concepts));
+      toast.success(more ? "다른 기획안을 가져왔습니다." : "이미지 기획안을 만들었습니다.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "이미지 기획에 실패했습니다.");
+    } finally {
+      setPlanning(false);
+    }
+  }
+
+  /** STEP 4-2 — 선택된 기획안으로 이미지를 만든다 */
+  async function generateImages() {
+    if (!draft) return;
+    const plans = selectedPlans();
+    if (plans.length === 0) return;
+
+    setImaging(true);
+    try {
+      // 이미지 내용은 원고가 아니라 선택된 기획안에서만 나온다
+      const result = await getAiBlogService().generateImages({
+        plans,
+        input,
+        style: imageOptions.style,
         thumbnailRatio: imageOptions.thumbnailRatio,
       });
       setAssets(result.assets);
@@ -178,6 +250,7 @@ export function AiBlogView() {
         imageStyle: imageOptions.style,
         cardCount: imageOptions.cardCount,
         thumbnailRatio: imageOptions.thumbnailRatio,
+        visualPlans: plans,
         imagePrompts: result.prompts,
         images: result.assets,
       });
@@ -216,6 +289,10 @@ export function AiBlogView() {
       thumbnailRatio: project.thumbnailRatio,
     });
 
+    setPlanSet(null);
+    setSelectedPlanIds({});
+    setSeenConcepts([]);
+
     const next = project.images.length > 0 ? 5 : restored ? 3 : 1;
     setStep(next);
     setReached(next);
@@ -228,6 +305,10 @@ export function AiBlogView() {
     setArticleSource("AI");
     setAssets([]);
     setImageOptions(DEFAULT_IMAGE_OPTIONS);
+    setPlanSet(null);
+    setPlanOverlap(null);
+    setSelectedPlanIds({});
+    setSeenConcepts([]);
     setStep(1);
     setReached(1);
   }
@@ -310,17 +391,36 @@ export function AiBlogView() {
         ))}
 
       {step === 4 &&
-        (imaging || !outline ? (
+        (imaging ? (
           <ImagesGenerating />
-        ) : (
+        ) : planning ? (
+          <VisualPlanning />
+        ) : planSet ? (
+          <VisualPlanPicker
+            plans={planSet}
+            selected={selectedPlanIds}
+            onSelect={(type, planId) =>
+              setSelectedPlanIds((prev) => ({ ...prev, [type]: planId }))
+            }
+            onMoreIdeas={() => planVisuals(true)}
+            planning={planning}
+            overlap={planOverlap}
+            demo={planSource === "MOCK"}
+            onGenerate={generateImages}
+            generating={imaging}
+            onBack={() => setPlanSet(null)}
+          />
+        ) : outline ? (
           <ImageOptions
             outline={outline}
             value={imageOptions}
-            onChange={(patch) => setImageOptions((prev) => ({ ...prev, ...patch }))}
-            onGenerate={generateImages}
-            generating={imaging}
+            onChange={changeImageOptions}
+            onPlan={() => planVisuals(false)}
+            planning={planning}
             onBack={() => setStep(3)}
           />
+        ) : (
+          <VisualPlanning />
         ))}
 
       {step === 5 && draft && (

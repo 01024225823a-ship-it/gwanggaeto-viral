@@ -64,6 +64,16 @@ export const GenerateBodySchema = z.object({
   input: AiBlogInputSchema,
 });
 
+export const PlanVisualsBodySchema = z.object({
+  accountId: z.string().min(1).max(100),
+  input: AiBlogInputSchema,
+  draft: DraftSchema,
+  types: z.array(z.enum(["infographic", "cardnews", "thumbnail"])).min(1).max(3),
+  cardCount: z.number().int().min(3).max(10),
+  /** 이미 본 기획안 concept — "다른 아이디어 추천" */
+  exclude: z.array(z.string().max(100)).max(30).optional(),
+});
+
 export const ReviseBodySchema = z.object({
   accountId: z.string().min(1).max(100),
   input: AiBlogInputSchema,
