@@ -44,8 +44,11 @@ export function articleToMarkdown(article: AiBlogArticle): string {
     out.push(article.referenceNotes.map((note) => `- ${note}`).join("\n"));
   }
 
+  // 1인칭 독백형은 번호형 소제목을 쓰지 않는다 (리포트처럼 보이면 안 된다)
+  const numbered = article.articleType !== "monologue";
+
   for (const [i, section] of article.sections.entries()) {
-    out.push(`### ${i + 1}. ${section.heading}`);
+    out.push(numbered ? `### ${i + 1}. ${section.heading}` : `### ${section.heading}`);
     out.push(section.paragraphs.join("\n\n"));
   }
 

@@ -2,14 +2,13 @@ import { NextResponse } from "next/server";
 import { mapError } from "@/lib/ai-blog/server/errors";
 import { checkRateLimit, recordUsage, requireCustomer } from "@/lib/ai-blog/server/guard";
 import { resolveAiBlogService } from "@/lib/ai-blog/server/resolve-service";
-import { PlanVisualsBodySchema } from "@/lib/ai-blog/server/schema";
+import { DesignVisualsBodySchema } from "@/lib/ai-blog/server/schema";
 
 /**
- * POST /api/ai-blog/plan-visuals — 이미지 콘텐츠 기획.
+ * POST /api/ai-blog/design-visuals — 이미지 디자인 기획.
  *
- * 최종 원고를 분석해 "이미지로 만들 관점"을 유형별로 3개씩 제안한다.
- * 이미지 제작은 여기서 나온 기획안만 사용하므로, 원고 문장이 이미지로
- * 그대로 옮겨가는 일이 구조적으로 생기지 않는다.
+ * 콘텐츠 기획(VisualPlan)을 받아 "어떻게 보여줄지"(VisualDesignPlan)를 만든다.
+ * 레이아웃·시각 요소·정보 위계가 여기서 정해지고, 이미지 생성은 이 결과만 사용한다.
  */
 
 export const runtime = "nodejs";
@@ -19,19 +18,19 @@ export async function POST(request: Request) {
   try {
     const { service, config } = resolveAiBlogService();
 
-    const body = PlanVisualsBodySchema.parse(await request.json());
+    const body = DesignVisualsBodySchema.parse(await request.json());
 
     const account = requireCustomer(body.accountId);
     checkRateLimit(account.id, config.rateLimitPerMinute);
-    recordUsage(account, "plan-visuals");
+    recordUsage(account, "design-visuals");
 
-    const result = await service.planVisualContent({
-      draft: body.draft,
+    const result = await service.designVisualContent({
+      plans: body.plans,
       input: body.input,
-      types: body.types,
-      cardCount: body.cardCount,
-      articleCount: body.articleCount,
-      exclude: body.exclude,
+      style: body.style,
+      ratios: body.ratios ?? {},
+      excludeLayouts: body.excludeLayouts,
+      instruction: body.instruction,
     });
 
     return NextResponse.json({ result, mode: service.mode });

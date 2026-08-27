@@ -1,36 +1,47 @@
-import {
-  AI_BLOG_IMAGE_TYPES,
-  categoryLabel,
-  imageRatioOf,
-  imageStyleLabel,
-  imageTypeLabel,
-} from "@/lib/ai-blog/options";
+/**
+ * [LEGACY] 실사·일러스트 비주얼 파이프라인.
+ *
+ * AI 블로그 **기본** 이미지 제작 경로는 정보 이미지로 대체됐다.
+ *   최종 원고 → InfoVisualPlan (lib/ai-blog/info-visual.ts)
+ *             → SVG/Canvas (render/info-layout.ts) → PNG
+ *
+ * 이 모듈은 기본 경로에서 호출하지 않는다.
+ * 향후 별도 "비주얼 이미지" 기능을 다시 붙일 때를 위해 삭제하지 않고 유지한다.
+ */
+
+import { categoryLabel, imageTypeLabel, imageStyleLabel } from "@/lib/ai-blog/options";
 import type {
   AiBlogAspectRatio,
-  AiBlogImagePrompt,
-  AiBlogImageRequest,
   AiBlogImageStyle,
   AiBlogImageType,
   AiBlogInput,
-  CardNewsPlan,
-  CardNewsPrompt,
-  InfographicPlan,
-  InfographicPrompt,
-  ThumbnailPlan,
-  ThumbnailPrompt,
+  VisualDesignPage,
+  VisualDesignPlan,
+  VisualElement,
+  VisualLayout,
+  VisualPlan,
   VisualPlanRequest,
-  VisualType,
+  VisualSection,
 } from "@/lib/ai-blog/types";
+import {
+  ALL_LAYOUTS,
+  LAYOUT_CATALOG,
+  TEXT_LIMITS,
+  allowedLayouts,
+  artDirectionFor,
+  layoutLabel,
+} from "@/lib/ai-blog/visual-design";
 
 /**
- * 이미지 콘텐츠 기획 · 이미지 생성 프롬프트.
+ * 이미지 파이프라인 프롬프트.
  *
- * 두 단계로 나뉜다.
- *   1) 기획 프롬프트  : 최종 원고를 AI에게 주고 "이미지로 만들 관점"을 기획시킨다
- *   2) 이미지 프롬프트: 기획 결과(VisualPlan)를 실제 이미지 생성용 문장으로 바꾼다
+ *   1) 콘텐츠 기획 프롬프트 : 원고 → "무엇을 이미지로 만들지"(VisualPlan)
+ *   2) 디자인 기획 프롬프트 : VisualPlan → "어떻게 보여줄지"(VisualDesignPlan)
+ *   3) 이미지 생성 프롬프트 : VisualDesignPlan → 실제 이미지 생성 API에 넘길 문자열
  *
- * 2단계는 원고를 전혀 참조하지 않는다. 이미지에 들어갈 내용은 전부 기획안에서 나온다.
- * (원고 문장을 그대로 옮겨 이미지가 본문 요약이 되는 문제를 여기서 구조적으로 막는다)
+ * 2단계는 원고를 참조하지 않고 1단계 결과만 본다.
+ * 3단계는 2단계 결과만 본다. 각 단계가 앞 단계의 산출물만 쓰기 때문에
+ * 원고 문장이 이미지로 그대로 흘러가는 경로가 구조적으로 없다.
  */
 
 /* ------------------------------------------------------------------ */
@@ -89,6 +100,15 @@ const TYPE_GUIDE: Record<AiBlogImageType, string> = {
     "1장은 질문이나 상황 제시로 시작해 궁금증을 만들고, 마지막 장은 정리·행동 유도로 닫습니다.",
     "headline 은 두 줄 이내로 짧게, body 는 40자 내외로 씁니다.",
     "visualDirection 에는 그 장에 어울리는 그림 방향을 한 줄로 적습니다(사람 얼굴·로고 제외).",
+  ].join("\n"),
+  article: [
+    "[본문 비주얼 기획 지침]",
+    "본문 중간에 넣어 그 문단의 상황·개념·분위기를 보완하는 이미지입니다.",
+    "정보를 나열하지 마세요. 이미지 안 텍스트는 없거나 아주 짧아야 합니다.",
+    "원고의 어느 소제목 아래에 넣으면 이해가 쉬워지는지 afterHeading 으로 지정하세요.",
+    "subject(무엇을), scene(어떤 장면), mood(분위기)를 각각 한국어로 구체적으로 적습니다.",
+    "사람 얼굴 클로즈업, 실제 제품 패키지, 브랜드 로고는 만들지 않습니다.",
+    "사용자가 제공하지 않은 특정 제품의 포장은 절대 지어내지 마세요.",
   ].join("\n"),
   thumbnail: [
     "[대표 이미지 기획 지침]",
@@ -170,124 +190,359 @@ export function buildOverlapRetryNote(duplicates: string[]): string {
 }
 
 /* ------------------------------------------------------------------ */
-/* 2단계 — 이미지 생성 프롬프트                                         */
+/* 2단계 — 디자인 기획 프롬프트 (아트 디렉터)                           */
 /* ------------------------------------------------------------------ */
 
-export interface PromptContext {
-  input: AiBlogInput;
-  style: AiBlogImageStyle;
-  ratio: AiBlogAspectRatio;
+function layoutMenu(type: AiBlogImageType): string {
+  return allowedLayouts(type)
+    .map((layout) => `- ${layout} (${LAYOUT_CATALOG[layout].label}) : ${LAYOUT_CATALOG[layout].whenToUse}`)
+    .join("\n");
 }
 
-const STYLE_DIRECTION: Record<AiBlogImageStyle, string> = {
-  business: "네이비·차콜 계열의 차분한 비즈니스 톤, 정돈된 그리드, 절제된 아이콘",
-  clean: "화이트 배경에 여백이 넉넉한 정보형 레이아웃, 블루 포인트 컬러",
-  warm: "베이지·소프트 오렌지 계열의 따뜻한 라이프스타일 톤, 둥근 모서리",
-  minimal: "무채색 위주의 모던 미니멀, 얇은 구분선과 큰 타이포그래피",
-  news: "뉴스 리포트 톤, 굵은 헤드라인과 상단 컬러 바",
+const DENSITY_RULE = [
+  "[텍스트 밀도 — 가장 중요한 원칙]",
+  "이미지는 읽는 콘텐츠가 아니라 보는 콘텐츠입니다.",
+  `- headline : ${TEXT_LIMITS.headline}자 이내`,
+  `- subheadline : ${TEXT_LIMITS.subheadline}자 이내`,
+  `- 항목 제목(title) : ${TEXT_LIMITS.sectionTitle}자 이내`,
+  `- 항목 설명(description) : ${TEXT_LIMITS.sectionDescription}자 이내`,
+  "- 문장을 나열하지 말고 '아이콘 + 짧은 문구', '숫자 + 키워드', '체크 + 핵심어' 형태로 바꿉니다.",
+  "- 설명으로 다 말하려 하지 말고, 시각 요소가 대신 말하게 합니다.",
+].join("\n");
+
+const ELEMENT_RULE = [
+  "[시각 요소 — visualElements]",
+  "텍스트만 배치하지 말고, 무엇을 그릴지 직접 정하세요. 최소 3개 이상 만듭니다.",
+  "type : illustration | medical_illustration | icon | number | arrow | connector | badge | chart | shape",
+  "position : center | center-top | center-bottom | top-left | top-right | bottom-left | bottom-right | left | right | background",
+  "emphasis : primary(가장 큰 요소 1개) | secondary | accent",
+  "subject 에는 무엇을 그릴지 한국어로 구체적으로 적습니다. 예) '단순화한 무릎 관절 구조'",
+  "",
+  "사람 얼굴, 실제 브랜드 로고는 넣지 않습니다.",
+  "chart 는 원고나 참고자료에 근거가 있는 수치가 있을 때만 씁니다.",
+  "근거 없는 통계·그래프·수치를 디자인 목적으로 만들어내면 안 됩니다.",
+].join("\n");
+
+const DESIGN_TYPE_GUIDE: Record<AiBlogImageType, string> = {
+  infographic: [
+    "[인포그래픽 디자인 지침]",
+    "단순 텍스트 카드가 되면 실패입니다. 아래 요소 중 최소 2가지 이상을 반드시 사용하세요.",
+    "대표 일러스트 / 아이콘 / 번호 / 화살표 / 연결선 / 비교 구조 / 단계 구조 / 체크박스 / 강조 숫자 / 배지",
+    `sections 는 ${TEXT_LIMITS.maxSections}개 이하로 만들고, 각 항목에 marker(01, 02 …)와 icon 을 붙입니다.`,
+    "정보 위계를 분명히 하세요 — 가장 크게 보여줄 것 하나(keyMessage)를 정합니다.",
+  ].join("\n"),
+  cardnews: [
+    "[카드뉴스 디자인 지침]",
+    "모든 장이 같은 템플릿이면 실패입니다. 장마다 layout 을 다르게 배정하세요.",
+    "권장 흐름 : 1장 hero(표지) → 중간 장 grid/comparison/checklist/process/numbered → 마지막 장 summary",
+    "같은 layout 이 연속으로 반복되지 않게 합니다.",
+    "각 장은 headline 1개 + sections 2~4개로 짧게 구성합니다.",
+    "장마다 visualElements 를 따로 정합니다.",
+  ].join("\n"),
+  article: [
+    "[본문 비주얼 디자인 지침]",
+    "layout 은 visual 로 고정하고 sections 는 빈 배열로 둡니다.",
+    "그림이 주인공입니다. visualElements 의 primary 에 장면 일러스트를 넣으세요.",
+    "headline 은 짧은 캡션 정도로만 쓰거나 비워 둡니다.",
+  ].join("\n"),
+  thumbnail: [
+    "[대표 이미지 디자인 지침]",
+    "정보를 넣지 마세요. 목적은 클릭 유도와 주제 인지입니다.",
+    "layout 은 hero 로 고정하고, sections 는 빈 배열로 둡니다.",
+    "텍스트는 headline 1개, subheadline 최대 1개까지만 씁니다.",
+    "체크리스트·FAQ·긴 설명을 넣으면 실패입니다.",
+    "대신 주제를 상징하는 대표 일러스트를 primary 요소로 배치하세요.",
+  ].join("\n"),
 };
 
-/** 시각화 형태별 레이아웃 지시 */
-const VISUAL_TYPE_LAYOUT: Record<VisualType, string> = {
-  checklist: "좌측 체크박스 + 우측 라벨과 한 줄 설명을 세로로 정렬",
-  steps: "번호가 붙은 단계를 위에서 아래로 배치하고 단계 사이를 화살표로 연결",
-  comparison: "좌우 2단 대조 레이아웃, 같은 항목을 같은 높이에 맞춰 비교",
-  numbers: "큰 숫자를 먼저 보여주고 그 아래에 설명을 작게 배치",
-  signals: "점검할 신호를 아이콘 + 라벨 카드로 나열",
-  criteria: "기준 라벨을 굵게, 확인 방법을 그 아래 한 줄로 배치",
-};
+/** 디자인 기획 시스템 프롬프트 */
+export function buildDesignSystemPrompt(type: AiBlogImageType, style: AiBlogImageStyle): string {
+  const art = artDirectionFor(style);
 
-function commonDirections(ctx: PromptContext): string[] {
   return [
-    `- 디자인 스타일: ${imageStyleLabel(ctx.style)} (${STYLE_DIRECTION[ctx.style]})`,
-    `- 이미지 비율: ${ctx.ratio}`,
-    `- 업종/분야: ${categoryLabel(ctx.input.category)}`,
-    "- 모든 텍스트는 한국어로, 맞춤법에 맞게 정확히 렌더링할 것",
-    "- 사람 얼굴, 실제 브랜드 로고, 읽을 수 없는 가짜 문자를 넣지 말 것",
-    "- 아래에 적힌 문구만 사용하고 임의로 문장을 덧붙이지 말 것",
-  ];
+    "당신은 한국 디지털 콘텐츠 전문 아트디렉터이자 인포그래픽 디자이너입니다.",
+    "텍스트를 단순히 카드에 배치하지 말고, 정보의 성격을 분석해 가장 이해하기 쉬운",
+    "시각적 구조를 결정해야 합니다.",
+    "",
+    "[반드시 판단할 것]",
+    "- 핵심 메시지는 무엇인가",
+    "- 어떤 정보를 가장 크게 보여줄 것인가",
+    "- 어떤 정보는 텍스트가 아니라 아이콘으로 표현할 것인가",
+    "- 일러스트가 필요한가",
+    "- 비교 구조가 필요한가, 순서·프로세스가 나은가",
+    "- 숫자를 크게 강조해야 하는가",
+    "- 중앙 집중형인가 좌우 비교형인가",
+    "- 어떤 정보 위계가 필요한가",
+    "",
+    "[선택 가능한 레이아웃]",
+    layoutMenu(type),
+    "",
+    DESIGN_TYPE_GUIDE[type],
+    "",
+    DENSITY_RULE,
+    "",
+    ELEMENT_RULE,
+    "",
+    "[적용할 아트 디렉션]",
+    `- 스타일: ${imageStyleLabel(style)}`,
+    `- 분위기: ${art.mood}`,
+    `- 일러스트: ${art.illustrationStyle}`,
+    `- 배경: ${art.backgroundStyle}`,
+    `- 타이포: ${art.typographyDirection}`,
+    `- 정보 밀도: ${art.density}`,
+    "같은 내용이라도 이 아트 디렉션에 맞게 구성과 요소를 바꿔야 합니다.",
+    "",
+    "[유지할 것]",
+    "콘텐츠 기획(headline, 항목)의 뜻을 바꾸지 마세요.",
+    "표현을 더 짧고 시각적으로 다듬는 것은 좋지만, 원고 본문을 다시 끌어오면 안 됩니다.",
+  ].join("\n");
 }
 
-/** 기획안 → 인포그래픽 생성 프롬프트 */
-export function generateInfographicPrompt(
-  plan: InfographicPlan,
-  ctx: PromptContext,
-): InfographicPrompt {
-  const text = [
-    "한국어 정보성 인포그래픽 1장을 디자인하세요.",
-    "",
-    `[기획 의도] ${plan.concept} — ${plan.goal}`,
-    "",
-    `[메인 문구] ${plan.headline}`,
-    plan.subheadline ? `[보조 문구] ${plan.subheadline}` : "",
-    "",
-    "[구성 항목]",
-    ...plan.items.map((item, i) => `${i + 1}. ${item.title} — ${item.description}`),
-    plan.footer ? `\n[하단 문구] ${plan.footer}` : "",
-    "",
-    "[레이아웃]",
-    `- ${VISUAL_TYPE_LAYOUT[plan.visualType]}`,
-    "- 상단 메인 문구 → 구성 항목 → 하단 문구 순의 세로 흐름",
-    "",
-    "[디자인 조건]",
-    ...commonDirections(ctx),
+function planBrief(plan: VisualPlan): string {
+  if (plan.type === "article") {
+    return [
+      `[콘텐츠 기획] ${plan.concept} — ${plan.goal}`,
+      `삽입 위치: "${plan.afterHeading}" 아래`,
+      `목적: ${plan.purpose}`,
+      `대상: ${plan.subject}`,
+      `장면: ${plan.scene}`,
+      `분위기: ${plan.mood}`,
+      plan.visualDirection ? `그림 방향: ${plan.visualDirection}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  if (plan.type === "infographic") {
+    return [
+      `[콘텐츠 기획] ${plan.concept} — ${plan.goal}`,
+      `헤드라인: ${plan.headline}`,
+      plan.subheadline ? `보조 문구: ${plan.subheadline}` : "",
+      `추천 시각화 형태: ${plan.visualType}`,
+      "항목:",
+      ...plan.items.map((item, i) => `  ${i + 1}. ${item.title} — ${item.description}`),
+      plan.footer ? `하단 문구: ${plan.footer}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  if (plan.type === "cardnews") {
+    return [
+      `[콘텐츠 기획] ${plan.concept} — ${plan.goal}`,
+      `총 ${plan.cards.length}장`,
+      ...plan.cards.map(
+        (card) =>
+          `  ${card.page}장 | ${card.headline} | ${card.body}${card.visualDirection ? ` | 그림: ${card.visualDirection}` : ""}`,
+      ),
+    ].join("\n");
+  }
+
+  return [
+    `[콘텐츠 기획] ${plan.concept} — ${plan.goal}`,
+    `헤드라인: ${plan.headline}`,
+    plan.subheadline ? `보조 문구: ${plan.subheadline}` : "",
   ]
     .filter(Boolean)
     .join("\n");
-
-  return {
-    type: "infographic",
-    planId: plan.id,
-    concept: plan.concept,
-    headline: plan.headline,
-    subheadline: plan.subheadline,
-    visualType: plan.visualType,
-    items: plan.items,
-    footer: plan.footer,
-    style: ctx.style,
-    styleLabel: imageStyleLabel(ctx.style),
-    ratio: ctx.ratio,
-    text,
-  };
 }
 
-/** 기획안 → 카드뉴스 생성 프롬프트 */
-export function generateCardNewsPrompt(plan: CardNewsPlan, ctx: PromptContext): CardNewsPrompt {
-  const text = [
-    `한국어 정보 카드뉴스 ${plan.cards.length}장을 같은 디자인 시스템으로 디자인하세요.`,
+/** 디자인 기획 프롬프트(user 메시지) */
+export function buildDesignPrompt(
+  plan: VisualPlan,
+  input: AiBlogInput,
+  ratio: AiBlogAspectRatio,
+  excludeLayouts: VisualLayout[] = [],
+  instruction?: string,
+): string {
+  const exclude =
+    excludeLayouts.length > 0
+      ? `\n[이미 사용한 레이아웃 — 다른 구조로 제안할 것]\n${excludeLayouts
+          .map((layout) => `- ${layout} (${layoutLabel(layout)})`)
+          .join("\n")}`
+      : "";
+
+  return [
+    `[만들 이미지] ${imageTypeLabel(plan.type)} · 비율 ${ratio}`,
+    `[업종/분야] ${categoryLabel(input.category)}`,
+    `[타깃 독자] ${input.target || "일반 독자"}`,
+    exclude,
+    instruction ? `
+[수정 요청 — 이 이미지 하나에만 적용]
+${instruction}` : "",
     "",
-    `[기획 의도] ${plan.concept} — ${plan.goal}`,
+    planBrief(plan),
     "",
-    "[카드 구성]",
-    ...plan.cards.map((card) =>
-      [
-        `${card.page}장`,
-        `  헤드라인: ${card.headline}`,
-        card.body ? `  본문: ${card.body}` : "",
-        card.visualDirection ? `  그림 방향: ${card.visualDirection}` : "",
-      ]
-        .filter(Boolean)
-        .join("\n"),
+    "위 콘텐츠 기획을 실제로 어떻게 보여줄지 디자인해 주세요.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/* ------------------------------------------------------------------ */
+/* 3단계 — 실제 이미지 생성 프롬프트                                    */
+/* ------------------------------------------------------------------ */
+
+const BASE_AVOID = [
+  "excessive text, paragraphs, or full sentences",
+  "fake statistics, invented numbers, made-up charts",
+  "medical, legal or financial claims",
+  "clutter, cramped spacing",
+  "repeated identical card layout",
+  "human faces, real brand logos",
+  "watermarks, signatures",
+];
+
+function elementLine(element: VisualElement): string {
+  return `- ${element.subject} (${element.type}, ${element.position}, ${element.emphasis})`;
+}
+
+function koreanTextBlock(
+  headline: string,
+  subheadline: string | undefined,
+  keyMessage: string | undefined,
+  sections: VisualSection[],
+  footnote: string | undefined,
+): string[] {
+  return [
+    "Korean text content (render exactly as written, do not add sentences):",
+    `HEADLINE: ${headline}`,
+    subheadline ? `SUB: ${subheadline}` : "",
+    keyMessage ? `KEY: ${keyMessage}` : "",
+    ...sections.map(
+      (section, i) =>
+        `${section.marker ?? String(i + 1).padStart(2, "0")}: ${section.title}${section.description ? ` — ${section.description}` : ""}`,
+    ),
+    footnote ? `FOOTER: ${footnote}` : "",
+  ].filter(Boolean);
+}
+
+/**
+ * 한글 렌더링 대비 문구.
+ *
+ * 이미지 생성 모델이 한글을 정확히 그리지 못하는 경우가 많다.
+ * 그럴 때 깨진 글자를 그리는 대신 자리를 비워두게 해서,
+ * 웹 렌더러(HTML/SVG/Canvas)가 그 자리에 정확한 한글을 얹을 수 있게 한다.
+ */
+const KOREAN_TEXT_NOTE = [
+  "Text rendering note:",
+  "If Korean glyphs cannot be rendered accurately, leave clean empty areas at the",
+  "text positions instead of drawing placeholder or garbled characters.",
+  "The Korean text will be composited on top by a web renderer.",
+].join("\n");
+
+interface ImagePromptSource {
+  type: AiBlogImageType;
+  ratio: AiBlogAspectRatio;
+  style: AiBlogImageStyle;
+  category: AiBlogInput["category"];
+  concept: string;
+  designGoal: string;
+  layout: VisualLayout;
+  headline: string;
+  subheadline?: string;
+  keyMessage?: string;
+  sections: VisualSection[];
+  visualElements: VisualElement[];
+  footnote?: string;
+  /** 카드뉴스에서 "6장 중 2장" 같은 맥락 */
+  pageNote?: string;
+}
+
+function composePrompt(source: ImagePromptSource): string {
+  const art = artDirectionFor(source.style);
+  const layoutSpec = LAYOUT_CATALOG[source.layout] ?? LAYOUT_CATALOG.grid;
+
+  const kind =
+    source.type === "infographic"
+      ? "information infographic"
+      : source.type === "cardnews"
+        ? "card news slide"
+        : "blog thumbnail key visual";
+
+  return [
+    `Create a professional Korean ${categoryLabel(source.category)} ${kind}.`,
+    "",
+    "Topic:",
+    `${source.concept} — ${source.headline}`,
+    `Design goal: ${source.designGoal}`,
+    source.pageNote ? `Slide: ${source.pageNote}` : "",
+    "",
+    "Composition:",
+    `- ${source.ratio} aspect ratio, ${source.layout} layout`,
+    `- ${layoutSpec.composition}`,
+    `- ${source.sections.length > 0 ? `${source.sections.length} information blocks` : "no information blocks, single dominant message"}`,
+    "- clear information hierarchy: one dominant element, the rest subordinate",
+    "",
+    "Visual elements:",
+    ...source.visualElements.map(elementLine),
+    "",
+    "Style:",
+    ...art.englishStyle.map((line) => `- ${line}`),
+    `- ${art.palette}`,
+    "- premium blog infographic quality, not an advertisement",
+    "",
+    "Avoid:",
+    ...[...BASE_AVOID, ...art.englishAvoid].map((line) => `- ${line}`),
+    "",
+    ...koreanTextBlock(
+      source.headline,
+      source.subheadline,
+      source.keyMessage,
+      source.sections,
+      source.footnote,
     ),
     "",
-    "[디자인 조건]",
-    ...commonDirections(ctx),
-    "- 모든 장에서 서체·컬러·여백을 동일하게 유지하고, 장 번호를 우측 하단에 표기",
-  ].join("\n");
-
-  return {
-    type: "cardnews",
-    planId: plan.id,
-    concept: plan.concept,
-    cards: plan.cards,
-    style: ctx.style,
-    styleLabel: imageStyleLabel(ctx.style),
-    ratio: ctx.ratio,
-    text,
-  };
+    KOREAN_TEXT_NOTE,
+  ]
+    .filter((line) => line !== "")
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n");
 }
 
-/** 문구를 썸네일용 줄바꿈으로 나눈다 (최대 3줄) */
+/** 디자인 기획 → 이미지 생성 프롬프트 (단일 이미지) */
+export function buildImageGenerationPrompt(design: VisualDesignPlan): string {
+  return composePrompt({
+    type: design.type,
+    ratio: design.ratio,
+    style: design.style,
+    category: design.category,
+    concept: design.concept,
+    designGoal: design.designGoal,
+    layout: design.layout,
+    headline: design.hierarchy.headline,
+    subheadline: design.hierarchy.subheadline,
+    keyMessage: design.hierarchy.keyMessage,
+    sections: design.sections,
+    visualElements: design.visualElements,
+    footnote: design.footnote,
+  });
+}
+
+/** 디자인 기획 → 카드뉴스 한 장의 이미지 생성 프롬프트 */
+export function buildCardPagePrompt(
+  design: VisualDesignPlan,
+  page: VisualDesignPage,
+): string {
+  const total = design.pages?.length ?? 1;
+  return composePrompt({
+    type: "cardnews",
+    ratio: design.ratio,
+    style: design.style,
+    category: design.category,
+    concept: design.concept,
+    designGoal: design.designGoal,
+    layout: page.layout,
+    headline: page.headline,
+    keyMessage: page.keyMessage,
+    sections: page.sections,
+    visualElements: page.visualElements,
+    footnote: page.page === total ? design.footnote : undefined,
+    pageNote: `${page.page} of ${total} — keep one shared design system across all slides, but this slide uses the ${page.layout} structure`,
+  });
+}
+
+/** 문구를 표지·썸네일용 줄바꿈으로 나눈다 (최대 3줄) */
 export function splitTitleLines(title: string, maxLines = 3, maxPerLine = 12): string[] {
   const words = title.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
   const lines: string[] = [];
@@ -303,62 +558,7 @@ export function splitTitleLines(title: string, maxLines = 3, maxPerLine = 12): s
   return [...lines.slice(0, maxLines - 1), lines.slice(maxLines - 1).join(" ")];
 }
 
-/** 기획안 → 대표 이미지 생성 프롬프트 */
-export function generateThumbnailPrompt(
-  plan: ThumbnailPlan,
-  ctx: PromptContext,
-): ThumbnailPrompt {
-  const titleLines = splitTitleLines(plan.headline);
-
-  const text = [
-    "블로그 상단에 쓸 한국어 대표 이미지(썸네일) 1장을 디자인하세요.",
-    "",
-    `[기획 의도] ${plan.concept} — ${plan.goal}`,
-    "",
-    `[메인 문구]\n${titleLines.join("\n")}`,
-    plan.subheadline ? `[보조 문구] ${plan.subheadline}` : "",
-    `[분야] ${categoryLabel(ctx.input.category)}`,
-    "",
-    "[디자인 조건]",
-    ...commonDirections(ctx),
-    "- 메인 문구가 이미지 면적의 절반 이상을 차지하도록 큼직하게 배치",
-    "- 설명 문장을 추가하지 말 것. 텍스트는 위에 적힌 것만 사용",
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  return {
-    type: "thumbnail",
-    planId: plan.id,
-    concept: plan.concept,
-    titleLines,
-    subtitle: plan.subheadline,
-    category: ctx.input.category,
-    categoryLabel: categoryLabel(ctx.input.category),
-    style: ctx.style,
-    styleLabel: imageStyleLabel(ctx.style),
-    ratio: ctx.ratio,
-    text,
-  };
-}
-
-/**
- * 선택된 기획안을 이미지 생성 프롬프트로 바꾼다.
- * 정렬 순서는 화면 노출 순서(AI_BLOG_IMAGE_TYPES)를 따른다.
- */
-export function buildImagePrompts(request: AiBlogImageRequest): AiBlogImagePrompt[] {
-  const order = AI_BLOG_IMAGE_TYPES.map((t) => t.id);
-
-  return [...request.plans]
-    .sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type))
-    .map((plan) => {
-      const ctx: PromptContext = {
-        input: request.input,
-        style: request.style,
-        ratio: imageRatioOf(plan.type, request.thumbnailRatio),
-      };
-      if (plan.type === "infographic") return generateInfographicPrompt(plan, ctx);
-      if (plan.type === "cardnews") return generateCardNewsPrompt(plan, ctx);
-      return generateThumbnailPrompt(plan, ctx);
-    });
+/** 레이아웃 후보 목록 (디자인 기획 검증용) */
+export function isAllowedLayout(type: AiBlogImageType, layout: VisualLayout): boolean {
+  return allowedLayouts(type).includes(layout) || ALL_LAYOUTS.includes(layout);
 }

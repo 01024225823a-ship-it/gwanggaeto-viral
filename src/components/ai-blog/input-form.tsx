@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Link2, Plus, Sparkles, X } from "lucide-react";
+import { ChevronDown, Link2, Plus, Sparkles, X } from "lucide-react";
 import { LoginRequiredDialog } from "@/components/auth/login-required-dialog";
 import { AiFactCheckNotice } from "@/components/ai-blog/ai-notice";
 import { OptionCards } from "@/components/ai-blog/option-cards";
@@ -16,6 +16,7 @@ import {
   AI_BLOG_MAX_LENGTH,
   AI_BLOG_MIN_LENGTH,
   AI_BLOG_PURPOSES,
+  MONOLOGUE_EXAMPLE,
   needsFactCheck,
 } from "@/lib/ai-blog/options";
 import { URL_NOT_ANALYZED_NOTICE } from "@/lib/ai-blog/references";
@@ -77,6 +78,7 @@ export function AiBlogInputForm({
   );
   const [referenceKind, setReferenceKind] = useState<AiBlogReference["kind"]>("url");
   const [referenceText, setReferenceText] = useState("");
+  const [showMonologueExample, setShowMonologueExample] = useState(false);
 
   const validation = validateInput(value);
 
@@ -235,13 +237,44 @@ export function AiBlogInputForm({
         </Field>
 
         <Field label="원고 유형" required>
-          <OptionCards
-            ariaLabel="원고 유형"
-            options={AI_BLOG_ARTICLE_TYPES}
-            value={value.articleType}
-            onChange={(articleType) => onChange({ articleType })}
-            columns={4}
-          />
+          <div className="flex flex-col gap-2">
+            <OptionCards
+              ariaLabel="원고 유형"
+              options={AI_BLOG_ARTICLE_TYPES}
+              value={value.articleType}
+              onChange={(articleType) => onChange({ articleType })}
+              columns={5}
+            />
+
+            {value.articleType === "monologue" && (
+              <div className="flex flex-col gap-2 rounded-xl border border-input bg-muted/40 p-3">
+                <p className="text-[12px] leading-relaxed text-muted-foreground">
+                  후기형과 다릅니다. <b className="text-foreground">후기형</b>은 사용 경험을 풀어내고,{" "}
+                  <b className="text-foreground">1인칭 독백형</b>은 고민 → 탐색 → 비교 → 확인 →
+                  판단까지의 과정을 씁니다. 제품을 아직 써보지 않았어도 작성할 수 있습니다.
+                </p>
+                <button
+                  type="button"
+                  aria-expanded={showMonologueExample}
+                  onClick={() => setShowMonologueExample((prev) => !prev)}
+                  className="inline-flex w-fit items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  예시 보기
+                  <ChevronDown
+                    className={cn(
+                      "size-3.5 transition-transform",
+                      showMonologueExample && "rotate-180",
+                    )}
+                  />
+                </button>
+                {showMonologueExample && (
+                  <p className="rounded-lg bg-surface p-3 text-[13px] leading-relaxed whitespace-pre-line text-foreground">
+                    {MONOLOGUE_EXAMPLE}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
         </Field>
 
         <Field label="글 분량" required hint="공백 제외 기준입니다.">

@@ -2,14 +2,16 @@ import { NextResponse } from "next/server";
 import { mapError } from "@/lib/ai-blog/server/errors";
 import { checkRateLimit, recordUsage, requireCustomer } from "@/lib/ai-blog/server/guard";
 import { resolveAiBlogService } from "@/lib/ai-blog/server/resolve-service";
-import { PlanVisualsBodySchema } from "@/lib/ai-blog/server/schema";
+import { PlanInfoVisualsBodySchema } from "@/lib/ai-blog/server/schema";
 
 /**
- * POST /api/ai-blog/plan-visuals — 이미지 콘텐츠 기획.
+ * POST /api/ai-blog/plan-info-visuals — 정보 이미지 기획.
  *
- * 최종 원고를 분석해 "이미지로 만들 관점"을 유형별로 3개씩 제안한다.
- * 이미지 제작은 여기서 나온 기획안만 사용하므로, 원고 문장이 이미지로
- * 그대로 옮겨가는 일이 구조적으로 생기지 않는다.
+ * 최종 원고를 분석해 "이미지로 만들 가치가 있는 정보"만 뽑아 재구성한다.
+ * 이미지 생성 API 는 호출하지 않는다 — 실제 그림은 브라우저의 SVG/Canvas 렌더러가 그린다.
+ *
+ * 원고 문장을 그대로 옮긴 곳이 있으면 서버에서 한 번 더 재기획을 요청하므로,
+ * 원고와 이미지가 같은 문장을 반복하는 일이 구조적으로 줄어든다.
  */
 
 export const runtime = "nodejs";
@@ -19,18 +21,17 @@ export async function POST(request: Request) {
   try {
     const { service, config } = resolveAiBlogService();
 
-    const body = PlanVisualsBodySchema.parse(await request.json());
+    const body = PlanInfoVisualsBodySchema.parse(await request.json());
 
     const account = requireCustomer(body.accountId);
     checkRateLimit(account.id, config.rateLimitPerMinute);
-    recordUsage(account, "plan-visuals");
+    recordUsage(account, "plan-info-visuals");
 
-    const result = await service.planVisualContent({
+    const result = await service.planInfoVisuals({
       draft: body.draft,
       input: body.input,
-      types: body.types,
-      cardCount: body.cardCount,
-      articleCount: body.articleCount,
+      infoCount: body.infoCount,
+      withThumbnail: body.withThumbnail,
       exclude: body.exclude,
     });
 

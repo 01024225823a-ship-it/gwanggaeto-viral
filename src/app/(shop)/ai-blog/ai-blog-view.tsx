@@ -8,13 +8,21 @@ import { AiDemoBadge } from "@/components/ai-blog/ai-notice";
 import { ArticleEditor } from "@/components/ai-blog/article-editor";
 import { ArticleGenerating, ArticleResult } from "@/components/ai-blog/article-result";
 import { AiBlogInputForm } from "@/components/ai-blog/input-form";
-import { ImageOptions, ImagesGenerating } from "@/components/ai-blog/image-options";
-import type { ImageOptionValue } from "@/components/ai-blog/image-options";
+import { InfoResultView } from "@/components/ai-blog/info-result-view";
+import { InfoVisualOptions, InfoVisualPlanning } from "@/components/ai-blog/info-visual-options";
+import type { InfoVisualOptionValue } from "@/components/ai-blog/info-visual-options";
 import { RecentProjects } from "@/components/ai-blog/recent-projects";
-import { VisualPlanPicker, VisualPlanning } from "@/components/ai-blog/visual-plan-picker";
-import { AiBlogResultView } from "@/components/ai-blog/result-view";
 import { articleToDraft, countChars, outlineFromDraft } from "@/lib/ai-blog/article";
 import { parseConstraints } from "@/lib/ai-blog/constraints";
+import {
+  DEFAULT_INFO_RATIO,
+  DEFAULT_INFO_STYLE,
+  DEFAULT_INFO_THUMBNAIL_RATIO,
+  nextInfoStyle,
+  recommendInfoCount,
+  toInfoImages,
+  withInfoPlanIds,
+} from "@/lib/ai-blog/info-visual";
 import { getReferenceResolver } from "@/lib/ai-blog/references";
 import { getAiBlogService } from "@/lib/ai-blog/service";
 import {
@@ -26,15 +34,13 @@ import {
 } from "@/lib/ai-blog/storage";
 import type {
   AiBlogDraft,
-  AiBlogImageAsset,
   AiBlogInput,
   AiBlogProject,
-  AiBlogImageType,
   AiBlogReviseInstruction,
   AiBlogSource,
-  VisualOverlapReport,
-  VisualPlan,
-  VisualPlanSet,
+  InfoVisualImage,
+  InfoVisualPlan,
+  InfoVisualStyle,
 } from "@/lib/ai-blog/types";
 import { checkTopicRelevance } from "@/lib/ai-blog/validate";
 import { AI_BLOG_TOOL } from "@/lib/domain/service-tools";
@@ -52,11 +58,12 @@ const DEFAULT_INPUT: AiBlogInput = {
   requestNotes: "",
 };
 
-const DEFAULT_IMAGE_OPTIONS: ImageOptionValue = {
-  types: ["thumbnail", "infographic", "cardnews"],
-  style: "clean",
-  cardCount: 6,
-  thumbnailRatio: "1:1",
+const DEFAULT_IMAGE_OPTIONS: InfoVisualOptionValue = {
+  style: DEFAULT_INFO_STYLE,
+  infoCount: 4,
+  withThumbnail: true,
+  ratio: DEFAULT_INFO_RATIO,
+  thumbnailRatio: DEFAULT_INFO_THUMBNAIL_RATIO,
 };
 
 const GENERATING_STEPS = [
@@ -71,6 +78,10 @@ const GENERATING_STEPS = [
  * 주문 상품이 아니라 도구형 서비스이므로 주문/검수 흐름을 타지 않는다.
  * 비로그인 사용자도 입력 화면을 볼 수 있고, 실제 생성 시점에만 로그인을 요구한다.
  * AI 호출은 전부 lib/ai-blog/service.ts를 통해서만 한다.
+ *
+ * 이미지 경로는 "정보 이미지" 하나뿐이다.
+ *   최종 원고 → Claude(정보 추출·재구성) → InfoVisualPlan → SVG/Canvas → PNG
+ * 이미지 생성 API 를 호출하지 않으므로, 기획을 받으면 그 자리에서 바로 결과가 나온다.
  */
 export function AiBlogView() {
   const { account } = useSession();
@@ -87,17 +98,14 @@ export function AiBlogView() {
   const [articleSource, setArticleSource] = useState<AiBlogSource>("AI");
   const [generating, setGenerating] = useState(false);
   const [revisingLabel, setRevisingLabel] = useState<string | null>(null);
-  const [imageOptions, setImageOptions] = useState<ImageOptionValue>(DEFAULT_IMAGE_OPTIONS);
-  const [assets, setAssets] = useState<AiBlogImageAsset[]>([]);
-  const [imaging, setImaging] = useState(false);
 
-  // STEP 4-1 이미지 콘텐츠 기획
-  const [planSet, setPlanSet] = useState<VisualPlanSet | null>(null);
-  const [planOverlap, setPlanOverlap] = useState<VisualOverlapReport | null>(null);
-  const [planSource, setPlanSource] = useState<AiBlogSource>("AI");
-  const [selectedPlanIds, setSelectedPlanIds] = useState<Partial<Record<AiBlogImageType, string>>>({});
-  const [seenConcepts, setSeenConcepts] = useState<string[]>([]);
+  // STEP 4·5 — 정보 이미지
+  const [imageOptions, setImageOptions] = useState<InfoVisualOptionValue>(DEFAULT_IMAGE_OPTIONS);
+  const [infoPlans, setInfoPlans] = useState<InfoVisualPlan[] | null>(null);
   const [planning, setPlanning] = useState(false);
+  const [busyImageId, setBusyImageId] = useState<string | null>(null);
+  /** 카드별 "다른 디자인" — 전체 스타일을 건드리지 않고 그 장만 바꾼다 */
+  const [styleOverrides, setStyleOverrides] = useState<Record<string, InfoVisualStyle>>({});
 
   const outline = draft ? outlineFromDraft(draft) : null;
   // 추가 요청사항 해석 결과와 주제 반영도는 현재 원고 기준으로 매번 다시 계산한다
@@ -107,6 +115,16 @@ export function AiBlogView() {
     ? 0
     : input.references.filter((r) => r.kind === "url").length;
 
+  const images: InfoVisualImage[] = infoPlans
+    ? toInfoImages(
+        infoPlans,
+        imageOptions.style,
+        imageOptions.ratio,
+        imageOptions.thumbnailRatio,
+        styleOverrides,
+      )
+    : [];
+
   function goStep(next: number) {
     setStep(next);
     setReached((prev) => Math.max(prev, next));
@@ -115,7 +133,9 @@ export function AiBlogView() {
   /** 현재 상태를 작업물로 저장한다 (로그인 사용자만) */
   function persist(patch: Partial<AiBlogProject>) {
     if (!customerId) return;
-    const base = (projectId ? findAiBlogProject(projectId) : undefined) ?? createAiBlogProject(input, customerId);
+    const base =
+      (projectId ? findAiBlogProject(projectId) : undefined) ??
+      createAiBlogProject(input, customerId);
     const next: AiBlogProject = {
       ...base,
       ...input,
@@ -124,6 +144,16 @@ export function AiBlogView() {
     };
     saveAiBlogProject(next);
     if (next.id !== projectId) setProjectId(next.id);
+  }
+
+  /** 이미지 기획 결과를 저장한다 (스타일·비율까지 함께 남긴다) */
+  function persistImages(plans: InfoVisualPlan[]) {
+    persist({
+      infoVisuals: plans,
+      infoVisualStyle: imageOptions.style,
+      infoRatio: imageOptions.ratio,
+      infoThumbnailRatio: imageOptions.thumbnailRatio,
+    });
   }
 
   async function generate() {
@@ -135,12 +165,12 @@ export function AiBlogView() {
       const nextDraft = articleToDraft(article);
       setDraft(nextDraft);
       setArticleSource(article.source);
-      setAssets([]);
+      setInfoPlans(null);
+      setStyleOverrides({});
       persist({
         generatedArticle: article,
         editedArticle: nextDraft,
-        imagePrompts: [],
-        images: [],
+        infoVisuals: [],
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "원고 생성에 실패했습니다.");
@@ -165,62 +195,64 @@ export function AiBlogView() {
     }
   }
 
+  /** 원고를 확정하고 이미지 단계로 넘어간다 — 분량에 맞는 장수를 미리 채워둔다 */
   function confirmArticle() {
     if (!draft) return;
     persist({ editedArticle: draft });
+    if (!infoPlans) {
+      const recommended = recommendInfoCount(outlineFromDraft(draft), input.articleLength);
+      setImageOptions((prev) => ({ ...prev, infoCount: recommended }));
+    }
     goStep(4);
   }
 
-  /** 이미지 구성이 바뀌면 기존 기획안은 버린다 */
-  function changeImageOptions(patch: Partial<ImageOptionValue>) {
-    setImageOptions((prev) => ({ ...prev, ...patch }));
-    if (patch.types || patch.cardCount) {
-      setPlanSet(null);
-      setSelectedPlanIds({});
-      setSeenConcepts([]);
-    }
-  }
+  /* ---------------- STEP 4 — 이미지 기획 ---------------- */
 
-  /** 선택된 기획안 목록 */
-  function selectedPlans(): VisualPlan[] {
-    if (!planSet) return [];
-    return imageOptions.types
-      .map((type) => (planSet[type] ?? []).find((plan) => plan.id === selectedPlanIds[type]))
-      .filter((plan): plan is VisualPlan => !!plan);
+  /** 이미 만든 기획이 현재 구성(장수·대표 이미지 포함 여부)과 같은지 */
+  function planMatchesOptions(): boolean {
+    if (!infoPlans || infoPlans.length === 0) return false;
+    const thumbnails = infoPlans.filter((plan) => plan.type === "thumbnail").length;
+    return (
+      infoPlans.length - thumbnails === imageOptions.infoCount &&
+      thumbnails === (imageOptions.withThumbnail ? 1 : 0)
+    );
   }
 
   /**
-   * STEP 4-1 — 최종 원고를 분석해 이미지 기획안을 받는다.
-   * more=true 면 이미 본 기획안을 제외하고 다른 각도를 요청한다.
+   * 최종 원고를 분석해 정보 이미지 기획을 받는다.
+   *
+   * 스타일·비율만 바뀐 경우에는 AI 를 다시 부르지 않는다.
+   * 렌더링은 브라우저에서 하므로 같은 기획을 다른 스타일로 바로 다시 그릴 수 있다.
    */
-  async function planVisuals(more = false) {
+  async function planImages() {
     if (!draft) return;
+
+    if (planMatchesOptions()) {
+      goStep(5);
+      toast.success("선택한 스타일로 다시 그렸습니다.");
+      return;
+    }
+
     setPlanning(true);
     try {
-      const result = await getAiBlogService().planVisualContent({
+      const result = await getAiBlogService().planInfoVisuals({
         draft,
         input,
-        types: imageOptions.types,
-        cardCount: imageOptions.cardCount,
-        exclude: more ? seenConcepts : [],
+        infoCount: imageOptions.infoCount,
+        withThumbnail: imageOptions.withThumbnail,
+        // 이미 본 기획이 있으면 다른 각도를 요청한다
+        exclude: (infoPlans ?? []).map((plan) => plan.title),
       });
 
-      const concepts = Object.values(result.plans)
-        .flat()
-        .map((plan) => plan.concept);
+      setInfoPlans(result.plans);
+      setStyleOverrides({});
+      persistImages(result.plans);
+      goStep(5);
 
-      const nextSelection: Partial<Record<AiBlogImageType, string>> = {};
-      for (const type of imageOptions.types) {
-        const first = (result.plans[type] ?? [])[0];
-        if (first) nextSelection[type] = first.id;
+      if (!result.overlap.ok) {
+        toast.warning("원고와 표현이 겹치는 문구가 남아 있습니다. 수정 요청으로 다듬어 보세요.");
       }
-
-      setPlanSet(result.plans);
-      setPlanOverlap(result.overlap);
-      setPlanSource(result.source);
-      setSelectedPlanIds(nextSelection);
-      setSeenConcepts((prev) => (more ? [...prev, ...concepts] : concepts));
-      toast.success(more ? "다른 기획안을 가져왔습니다." : "이미지 기획안을 만들었습니다.");
+      toast.success(`이미지 ${result.plans.length}장을 만들었습니다.`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "이미지 기획에 실패했습니다.");
     } finally {
@@ -228,40 +260,43 @@ export function AiBlogView() {
     }
   }
 
-  /** STEP 4-2 — 선택된 기획안으로 이미지를 만든다 */
-  async function generateImages() {
-    if (!draft) return;
-    const plans = selectedPlans();
-    if (plans.length === 0) return;
+  /* ---------------- STEP 5 — 이미지 한 장만 수정 ---------------- */
 
-    setImaging(true);
+  /** 같은 정보를 다른 스타일로 다시 그린다 (AI 호출 없음) */
+  function restyleImage(image: InfoVisualImage) {
+    setStyleOverrides((prev) => ({ ...prev, [image.id]: nextInfoStyle(image.style) }));
+  }
+
+  /** 이미지 한 장의 기획만 교체한다 — 다른 이미지에는 영향이 없다 */
+  async function replacePlan(image: InfoVisualImage, instruction?: string) {
+    if (!draft || !infoPlans) return;
+
+    setBusyImageId(image.id);
     try {
-      // 이미지 내용은 원고가 아니라 선택된 기획안에서만 나온다
-      const result = await getAiBlogService().generateImages({
-        plans,
+      const result = await getAiBlogService().reviseInfoVisual({
+        draft,
         input,
-        style: imageOptions.style,
-        thumbnailRatio: imageOptions.thumbnailRatio,
+        plan: image.plan,
+        instruction,
+        siblingTitles: infoPlans
+          .filter((plan) => plan.id !== image.plan.id)
+          .map((plan) => plan.title),
       });
-      setAssets(result.assets);
-      persist({
-        editedArticle: draft,
-        imageTypes: imageOptions.types,
-        imageStyle: imageOptions.style,
-        cardCount: imageOptions.cardCount,
-        thumbnailRatio: imageOptions.thumbnailRatio,
-        visualPlans: plans,
-        imagePrompts: result.prompts,
-        images: result.assets,
-      });
-      goStep(5);
-      toast.success(`이미지 ${result.assets.length}장을 만들었습니다.`);
+
+      const next = withInfoPlanIds(
+        infoPlans.map((plan) => (plan.id === image.plan.id ? result.plan : plan)),
+      );
+      setInfoPlans(next);
+      persistImages(next);
+      toast.success(instruction ? "수정 요청을 반영했습니다." : "이미지를 다시 만들었습니다.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "이미지 제작에 실패했습니다.");
+      toast.error(error instanceof Error ? error.message : "이미지를 다시 만들지 못했습니다.");
     } finally {
-      setImaging(false);
+      setBusyImageId(null);
     }
   }
+
+  /* ---------------- 작업물 ---------------- */
 
   function openProject(project: AiBlogProject) {
     setProjectId(project.id);
@@ -281,19 +316,25 @@ export function AiBlogView() {
       (project.generatedArticle ? articleToDraft(project.generatedArticle) : null);
     setDraft(restored);
     setArticleSource(project.generatedArticle?.source ?? "AI");
-    setAssets(project.images);
+
+    // 정보 이미지 기획이 없는 예전 작업물은 원고만 복원하고 이미지는 다시 만든다
+    const plans = project.infoVisuals ?? [];
+    setInfoPlans(plans.length > 0 ? plans : null);
+    setStyleOverrides({});
+
+    const thumbnails = plans.filter((plan) => plan.type === "thumbnail").length;
     setImageOptions({
-      types: project.imageTypes.length > 0 ? project.imageTypes : DEFAULT_IMAGE_OPTIONS.types,
-      style: project.imageStyle,
-      cardCount: project.cardCount,
-      thumbnailRatio: project.thumbnailRatio,
+      style: project.infoVisualStyle ?? DEFAULT_INFO_STYLE,
+      infoCount:
+        plans.length > 0
+          ? Math.max(1, plans.length - thumbnails)
+          : DEFAULT_IMAGE_OPTIONS.infoCount,
+      withThumbnail: plans.length > 0 ? thumbnails > 0 : DEFAULT_IMAGE_OPTIONS.withThumbnail,
+      ratio: project.infoRatio ?? DEFAULT_INFO_RATIO,
+      thumbnailRatio: project.infoThumbnailRatio ?? DEFAULT_INFO_THUMBNAIL_RATIO,
     });
 
-    setPlanSet(null);
-    setSelectedPlanIds({});
-    setSeenConcepts([]);
-
-    const next = project.images.length > 0 ? 5 : restored ? 3 : 1;
+    const next = plans.length > 0 ? 5 : restored ? 3 : 1;
     setStep(next);
     setReached(next);
   }
@@ -303,12 +344,9 @@ export function AiBlogView() {
     setInput(DEFAULT_INPUT);
     setDraft(null);
     setArticleSource("AI");
-    setAssets([]);
     setImageOptions(DEFAULT_IMAGE_OPTIONS);
-    setPlanSet(null);
-    setPlanOverlap(null);
-    setSelectedPlanIds({});
-    setSeenConcepts([]);
+    setInfoPlans(null);
+    setStyleOverrides({});
     setStep(1);
     setReached(1);
   }
@@ -391,46 +429,32 @@ export function AiBlogView() {
         ))}
 
       {step === 4 &&
-        (imaging ? (
-          <ImagesGenerating />
-        ) : planning ? (
-          <VisualPlanning />
-        ) : planSet ? (
-          <VisualPlanPicker
-            plans={planSet}
-            selected={selectedPlanIds}
-            onSelect={(type, planId) =>
-              setSelectedPlanIds((prev) => ({ ...prev, [type]: planId }))
-            }
-            onMoreIdeas={() => planVisuals(true)}
-            planning={planning}
-            overlap={planOverlap}
-            demo={planSource === "MOCK"}
-            onGenerate={generateImages}
-            generating={imaging}
-            onBack={() => setPlanSet(null)}
-          />
-        ) : outline ? (
-          <ImageOptions
+        (planning || !outline ? (
+          <InfoVisualPlanning />
+        ) : (
+          <InfoVisualOptions
             outline={outline}
+            articleLength={input.articleLength}
             value={imageOptions}
-            onChange={changeImageOptions}
-            onPlan={() => planVisuals(false)}
+            onChange={(patch) => setImageOptions((prev) => ({ ...prev, ...patch }))}
+            onPlan={planImages}
             planning={planning}
             onBack={() => setStep(3)}
           />
-        ) : (
-          <VisualPlanning />
         ))}
 
       {step === 5 && draft && (
-        <AiBlogResultView
+        <InfoResultView
           draft={draft}
           input={input}
-          assets={assets}
+          images={images}
+          busyImageId={busyImageId}
           onEditArticle={() => setStep(3)}
-          onRemakeImages={() => setStep(4)}
+          onRemakeImages={() => goStep(4)}
           onRestart={restart}
+          onRestyle={restyleImage}
+          onRegenerate={(image) => replacePlan(image)}
+          onRevise={(image, instruction) => replacePlan(image, instruction)}
         />
       )}
     </div>

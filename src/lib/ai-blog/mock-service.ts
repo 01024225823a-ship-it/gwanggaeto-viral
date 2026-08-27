@@ -9,8 +9,13 @@ import {
 import type { AiBlogConstraints } from "@/lib/ai-blog/constraints";
 import type { CategoryPlaybook, PlaybookContext, PlaybookSection } from "@/lib/ai-blog/playbooks";
 import { TYPE_SECTION_ORDER, playbookOf, sectionHeading } from "@/lib/ai-blog/playbooks";
-import { generateMockImages } from "@/lib/ai-blog/mock-images";
+import { generateImagesFromDesigns } from "@/lib/ai-blog/image-provider";
 import { planVisualsWithMock } from "@/lib/ai-blog/mock-visual-planner";
+import { designVisualsWithMock } from "@/lib/ai-blog/mock-visual-designer";
+import {
+  planInfoVisualsWithMock,
+  reviseInfoVisualWithMock,
+} from "@/lib/ai-blog/mock-info-visual-planner";
 import { getReferenceResolver, usablePoints } from "@/lib/ai-blog/references";
 import type { ResolvedReference } from "@/lib/ai-blog/references";
 import type { AiBlogService } from "@/lib/ai-blog/service";
@@ -88,6 +93,13 @@ function titleCandidates(input: AiBlogInput, c: PlaybookContext): string[] {
       `${subject} 알아보며 확인한 것들 (${target} 기준)`,
       `${topic} — 확인한 순서대로 정리`,
       `${subject}, 무엇을 보고 판단했나`,
+    ],
+    // 1인칭 독백형 — 광고 문구가 아니라 담백한 1인칭 제목
+    monologue: [
+      `${topic}, 내가 알아본 과정`,
+      `${subject}, 왜 이걸 보게 됐을까`,
+      `${topic} — 비교하면서 생각한 것들`,
+      `${subject}, 내가 관심을 갖게 된 이유`,
     ],
     compare: [
       `${topic}, 항목별로 비교했습니다`,
@@ -304,6 +316,27 @@ function capBrandMentions(article: AiBlogArticle, brand: string, limit: number):
 /* 원고 생성                                                            */
 /* ------------------------------------------------------------------ */
 
+/**
+ * 1인칭 독백형 — Mock 이 만들 수 있는 범위.
+ *
+ * 도입·마무리에 1인칭 프레임 문단을 덧대고, 소제목·구성은 독백형 흐름을 따른다.
+ *
+ * ⚠ 본문 문단의 "~합니다" 어미를 "~한다" 로 바꾸지는 않는다.
+ *   한국어 어미 변환은 동사·형용사 구분이 필요해 규칙으로 흉내 내면 틀린 문장이 나온다
+ *   (예: 안전합니다 → 안전한다 ✗). 실제 1인칭 문체는 Claude 경로가 만든다.
+ *   Mock 은 오프라인에서 구조·화면·이미지 기획을 확인하는 용도다.
+ */
+function toMonologueShape(article: AiBlogArticle, c: PlaybookContext): AiBlogArticle {
+  const opening = `${josa(c.subject, "을를")} 알아보다 보면 생각보다 선택하기가 어렵다.\n\n종류도 많고 설명도 비슷하다 보니 결국 하나씩 비교하게 된다. 내가 무엇을 보고 판단했는지 정리해 둔다.`;
+  const closing = `결국 내가 관심 있게 본 기준은 이 정도였다. 물론 상황은 사람마다 다르니, ${c.target} 기준에서 다시 한번 확인해 보는 편이 좋겠다.`;
+
+  return {
+    ...article,
+    intro: `${opening}\n\n${article.intro}`,
+    outro: `${article.outro}\n\n${closing}`,
+  };
+}
+
 function buildArticle(
   input: AiBlogInput,
   constraints: AiBlogConstraints,
@@ -316,20 +349,28 @@ function buildArticle(
 
   const referenceNotes = usablePoints(resolved);
 
+  /**
+   * 1인칭 독백형은 요약·표·체크리스트·FAQ 를 쓰지 않는다.
+   * 사용자가 추가 요청사항에서 명시적으로 요청한 것만 남긴다. (요구사항 4)
+   */
+  const monologue = input.articleType === "monologue";
+
   let article: AiBlogArticle = {
     title: titleCandidates(input, c)[variant % 4],
     intro: buildIntro(g),
-    summary: playbook.summary(c).slice(0, 5),
+    summary: monologue ? [] : playbook.summary(c).slice(0, 5),
     sections: buildSections(g),
-    table: playbook.table(c),
-    checklist: playbook.checklist(c),
-    faqs: buildFaqs(g),
+    table: !monologue || constraints.includeTable ? playbook.table(c) : undefined,
+    checklist: !monologue || constraints.includeChecklist ? playbook.checklist(c) : [],
+    faqs: !monologue || constraints.includeFaq ? buildFaqs(g) : [],
     outro: buildOutro(g),
     referenceNotes: referenceNotes.length > 0 ? referenceNotes : undefined,
+    articleType: input.articleType,
     generatedAt: new Date().toISOString(),
     source: "MOCK",
   };
 
+  if (monologue) article = toMonologueShape(article, c);
   if (constraints.noAds) article = mapArticleText(article, toneDownAds);
 
   const brand = c.brand;
@@ -593,12 +634,27 @@ export const mockAiBlogService: AiBlogService = {
     return applyRevision(resolveAction(instruction), draft, input, instruction);
   },
 
+  async planInfoVisuals(request) {
+    await delay(900);
+    return planInfoVisualsWithMock(request);
+  },
+
+  async reviseInfoVisual(request) {
+    await delay(600);
+    return reviseInfoVisualWithMock(request);
+  },
+
   async planVisualContent(request) {
     await delay(900);
     return planVisualsWithMock(request);
   },
 
+  async designVisualContent(request) {
+    await delay(700);
+    return designVisualsWithMock(request);
+  },
+
   generateImages(request) {
-    return generateMockImages(request);
+    return generateImagesFromDesigns(request);
   },
 };

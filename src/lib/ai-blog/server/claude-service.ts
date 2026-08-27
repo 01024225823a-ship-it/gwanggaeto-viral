@@ -2,7 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import * as z from "zod";
 import { parseConstraints } from "@/lib/ai-blog/constraints";
-import { generateMockImages } from "@/lib/ai-blog/mock-images";
+import type { AiBlogConstraints } from "@/lib/ai-blog/constraints";
+import { generateImagesFromDesigns } from "@/lib/ai-blog/image-provider";
 import {
   buildArticlePrompt,
   buildRevisePrompt,
@@ -13,9 +14,15 @@ import { getReferenceResolver } from "@/lib/ai-blog/references";
 import type { AiBlogService } from "@/lib/ai-blog/service";
 import type { AiBlogServerConfig } from "@/lib/ai-blog/server/config";
 import { AiBlogGenerationError } from "@/lib/ai-blog/server/errors";
+import { designVisualsWithClaude } from "@/lib/ai-blog/server/visual-designer";
 import { planVisualsWithClaude } from "@/lib/ai-blog/server/visual-planner";
+import {
+  planInfoVisualsWithClaude,
+  reviseInfoVisualWithClaude,
+} from "@/lib/ai-blog/server/info-visual-planner";
 import type {
   AiBlogArticle,
+  AiBlogArticleType,
   AiBlogDraft,
   AiBlogInput,
   AiBlogTable,
@@ -73,6 +80,53 @@ const ArticleSchema = z.object({
     .describe("분야 특성상 필요한 안내 문구. 필요 없으면 빈 문자열."),
 });
 
+/**
+ * 1인칭 독백형 전용 스키마.
+ *
+ * 필드 구성은 같지만 설명(describe)이 다르다.
+ * 구조화 출력에서는 필드 설명이 곧 지시문이라, 같은 스키마를 쓰면
+ * "핵심 요약 3~5개" 같은 설명 때문에 독백형에도 요약·FAQ 가 붙는다.
+ */
+const MonologueArticleSchema = z.object({
+  title: z.string().describe("블로그 제목. 40자 이내. 광고 문구가 아니라 담백한 1인칭 제목."),
+  intro: z
+    .string()
+    .describe(
+      "도입부. 이 주제를 알아보게 된 계기와 처음 느낀 고민을 1인칭으로. 2~3개 문단을 빈 줄 두 개로 구분한 하나의 문자열.",
+    ),
+  summary: z.array(z.string()).describe("독백형에서는 쓰지 않는다. 반드시 빈 배열."),
+  sections: z
+    .array(
+      z.object({
+        heading: z
+          .string()
+          .describe("그 대목의 생각을 담은 짧은 소제목. 번호를 붙이지 않는다. 목차 제목처럼 쓰지 않는다."),
+        paragraphs: z
+          .array(z.string())
+          .describe(
+            "문단 배열. 1인칭 생각 흐름으로 쓴 평문. 짧은 문장과 중간 길이 문장을 섞는다. 마크다운 기호는 쓰지 않는다.",
+          ),
+      }),
+    )
+    .describe("본문 소제목 3~5개."),
+  table: z
+    .object({
+      caption: z.string(),
+      columns: z.array(z.string()),
+      rows: z.array(z.array(z.string())),
+    })
+    .nullable()
+    .describe("독백형에서는 쓰지 않는다. 반드시 null."),
+  checklist: z.array(z.string()).describe("독백형에서는 쓰지 않는다. 반드시 빈 배열."),
+  faqs: z
+    .array(z.object({ question: z.string(), answer: z.string() }))
+    .describe("독백형에서는 쓰지 않는다. 반드시 빈 배열."),
+  outro: z.string().describe("최종적으로 관심을 갖게 된 이유를 1인칭으로 정리한 마무리 문단."),
+  disclaimer: z
+    .string()
+    .describe("분야 특성상 필요한 안내 문구. 필요 없으면 빈 문자열."),
+});
+
 const DraftSchema = z.object({
   title: z.string().describe("수정된 제목. 제목 변경 요청이 아니면 원문 그대로."),
   body: z.string().describe("수정된 본문 전체. 지정된 마크다운 형식을 그대로 유지한다."),
@@ -117,22 +171,40 @@ function toTable(parsed: ParsedArticle["table"]): AiBlogTable | undefined {
   };
 }
 
-function toArticle(parsed: ParsedArticle): AiBlogArticle {
+function toArticle(
+  parsed: ParsedArticle,
+  input: AiBlogInput,
+  constraints: AiBlogConstraints,
+): AiBlogArticle {
   const outro = [parsed.outro.trim(), parsed.disclaimer.trim()].filter(Boolean).join("\n\n");
+
+  /**
+   * 1인칭 독백형은 요약·표·체크리스트·FAQ 를 쓰지 않는다.
+   * 프롬프트로 이미 막지만, 모델이 습관적으로 채워 보내는 경우가 있어
+   * 여기서 한 번 더 걸러낸다. 사용자가 명시적으로 요청한 것만 남긴다.
+   */
+  const monologue = input.articleType === "monologue";
+  const keep = {
+    summary: !monologue,
+    table: !monologue || constraints.includeTable,
+    checklist: !monologue || constraints.includeChecklist,
+    faqs: !monologue || constraints.includeFaq,
+  };
 
   return {
     title: parsed.title.trim(),
     intro: parsed.intro.trim(),
-    summary: parsed.summary.filter(Boolean),
+    summary: keep.summary ? parsed.summary.filter(Boolean) : [],
     sections: parsed.sections.map((section) => ({
       heading: section.heading.replace(/^\d+\.\s*/, "").trim(),
       paragraphs: section.paragraphs.filter(Boolean),
     })),
-    table: toTable(parsed.table),
-    checklist: parsed.checklist.filter(Boolean),
-    faqs: parsed.faqs.filter((faq) => faq.question && faq.answer),
+    table: keep.table ? toTable(parsed.table) : undefined,
+    checklist: keep.checklist ? parsed.checklist.filter(Boolean) : [],
+    faqs: keep.faqs ? parsed.faqs.filter((faq) => faq.question && faq.answer) : [],
     outro,
     // 참고자료는 Claude 가 본문에 녹여 쓰므로 별도 블록을 만들지 않는다
+    articleType: input.articleType,
     generatedAt: new Date().toISOString(),
     source: "AI",
   };
@@ -171,13 +243,24 @@ export function createClaudeAiBlogService(config: AiBlogServerConfig): AiBlogSer
   const client = getClient(config.apiKey ?? "");
   const effort = config.effort ? { effort: config.effort } : {};
 
-  async function requestArticle(userPrompt: string): Promise<ParsedArticle | null> {
+  /**
+   * 원고 요청.
+   *
+   * 원고 유형에 따라 시스템 프롬프트와 응답 스키마가 함께 바뀐다.
+   * 독백형은 "보고서 형식"을 요구하는 기본 스키마를 쓰면 안 되기 때문이다.
+   */
+  async function requestArticle(
+    userPrompt: string,
+    articleType: AiBlogArticleType,
+  ): Promise<ParsedArticle | null> {
+    const schema = articleType === "monologue" ? MonologueArticleSchema : ArticleSchema;
+
     const stream = client.messages.stream({
       model: config.model,
       max_tokens: 32_000,
       thinking: { type: "adaptive" },
-      system: buildSystemPrompt(),
-      output_config: { format: zodOutputFormat(ArticleSchema), ...effort },
+      system: buildSystemPrompt(articleType),
+      output_config: { format: zodOutputFormat(schema), ...effort },
       messages: [{ role: "user", content: userPrompt }],
     });
 
@@ -196,12 +279,13 @@ export function createClaudeAiBlogService(config: AiBlogServerConfig): AiBlogSer
       const resolved = await getReferenceResolver().resolve(input.references);
       const basePrompt = buildArticlePrompt(input, { resolved, constraints });
 
-      let parsed = await requestArticle(basePrompt);
+      let parsed = await requestArticle(basePrompt, input.articleType);
 
       // 구조화 파싱 실패 — 깨진 결과를 보여주지 않고 형식을 다시 못박아 1회만 재시도
       if (!isUsable(parsed)) {
         parsed = await requestArticle(
           `${basePrompt}\n\n[재요청] 앞선 응답이 형식에 맞지 않았습니다. 지정된 JSON 구조를 정확히 지켜 다시 작성해 주세요. 모든 필드를 빠짐없이 채웁니다.`,
+          input.articleType,
         );
       }
       if (!isUsable(parsed)) {
@@ -210,7 +294,7 @@ export function createClaudeAiBlogService(config: AiBlogServerConfig): AiBlogSer
         );
       }
 
-      let article = toArticle(parsed);
+      let article = toArticle(parsed, input, constraints);
 
       // 기존 주제 관련성 검증을 그대로 적용한다
       const validator = getRelevanceValidator();
@@ -227,10 +311,11 @@ export function createClaudeAiBlogService(config: AiBlogServerConfig): AiBlogSer
             issues,
             `특히 "${input.topic}" 라는 주제를 제목·도입·소제목·마무리 전체에서 일관되게 다뤄야 합니다.`,
           ].join("\n"),
+          input.articleType,
         );
 
         if (isUsable(retry)) {
-          const retryArticle = toArticle(retry);
+          const retryArticle = toArticle(retry, input, constraints);
           const retryReport = await validator.validate(articleToDraft(retryArticle), input);
           // 더 나아졌을 때만 교체한다
           if (retryReport.score > report.score) {
@@ -249,7 +334,7 @@ export function createClaudeAiBlogService(config: AiBlogServerConfig): AiBlogSer
         model: config.model,
         max_tokens: 32_000,
         thinking: { type: "adaptive" },
-        system: buildReviseSystemPrompt(),
+        system: buildReviseSystemPrompt(input.articleType),
         output_config: { format: zodOutputFormat(DraftSchema), ...effort },
         messages: [{ role: "user", content: buildRevisePrompt(draft, instruction, input) }],
       });
@@ -270,14 +355,29 @@ export function createClaudeAiBlogService(config: AiBlogServerConfig): AiBlogSer
       };
     },
 
-    // 최종 원고를 분석해 이미지용 기획안을 만든다 (원고 문장 재사용을 막는 핵심 단계)
+    // 최종 원고에서 시각화할 정보를 뽑아 정보 이미지 기획을 만든다 (현재 기본 경로)
+    planInfoVisuals(request) {
+      return planInfoVisualsWithClaude(client, config, request);
+    },
+
+    // 이미지 한 장의 기획만 다시 만든다
+    reviseInfoVisual(request) {
+      return reviseInfoVisualWithClaude(client, config, request);
+    },
+
+    // [LEGACY] 원고를 분석해 실사·일러스트 비주얼 기획안을 만든다
     planVisualContent(request) {
       return planVisualsWithClaude(client, config, request);
     },
 
-    // 이미지 생성 API 는 이번 단계에서 연결하지 않는다 (기획안 기반 Mock 미리보기 유지)
+    // [LEGACY] 콘텐츠 기획을 어떻게 보여줄지 디자인한다 (레이아웃·시각 요소 결정)
+    designVisualContent(request) {
+      return designVisualsWithClaude(client, config, request);
+    },
+
+    // [LEGACY] 이미지 생성 Provider 로 비주얼을 만든다
     generateImages(request) {
-      return generateMockImages(request);
+      return generateImagesFromDesigns(request);
     },
   };
 }

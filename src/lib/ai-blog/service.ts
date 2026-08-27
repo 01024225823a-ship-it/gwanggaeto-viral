@@ -7,6 +7,12 @@ import type {
   AiBlogInput,
   AiBlogReviseInstruction,
   AiBlogSource,
+  InfoVisualPlanRequest,
+  InfoVisualPlanResult,
+  InfoVisualReviseRequest,
+  InfoVisualReviseResult,
+  VisualDesignRequest,
+  VisualDesignResult,
   VisualPlanRequest,
   VisualPlanResult,
 } from "@/lib/ai-blog/types";
@@ -41,14 +47,32 @@ export interface AiBlogService {
   ): Promise<AiBlogDraft>;
 
   /**
-   * STEP 4-1 — 최종 원고를 분석해 "이미지로 만들 관점"을 기획한다.
+   * STEP 4 — 최종 원고를 분석해 정보 이미지 기획을 만든다. (현재 기본 경로)
    *
-   * 이미지에 들어갈 내용은 전부 이 단계에서 정해진다.
-   * 원고 문장을 그대로 잘라 쓰지 않기 위해, 이미지 제작 앞에 반드시 이 단계를 둔다.
+   * 이미지에 들어갈 내용은 전부 이 단계에서 정해지고,
+   * 실제 그림은 SVG/Canvas 렌더러가 그린다 (이미지 생성 API 를 쓰지 않는다).
+   */
+  planInfoVisuals(request: InfoVisualPlanRequest): Promise<InfoVisualPlanResult>;
+
+  /** STEP 5 — 이미지 한 장의 기획만 다시 만든다 (다른 이미지에는 영향이 없다) */
+  reviseInfoVisual(request: InfoVisualReviseRequest): Promise<InfoVisualReviseResult>;
+
+  /**
+   * [LEGACY] 최종 원고를 분석해 "이미지로 만들 관점"을 기획한다.
+   *
+   * 실사·일러스트 기반 비주얼 파이프라인의 첫 단계다.
+   * AI 블로그 기본 이미지 제작 경로에서는 더 이상 호출하지 않고,
+   * 향후 별도 비주얼 이미지 기능을 붙일 때를 위해 유지한다.
    */
   planVisualContent(request: VisualPlanRequest): Promise<VisualPlanResult>;
 
-  /** STEP 4-2 — 선택된 기획안으로 이미지 프롬프트와 결과 이미지를 만든다 */
+  /**
+   * [LEGACY] 콘텐츠 기획을 "어떻게 보여줄지" 디자인한다.
+   * 위 planVisualContent 와 같은 이유로 유지만 한다.
+   */
+  designVisualContent(request: VisualDesignRequest): Promise<VisualDesignResult>;
+
+  /** [LEGACY] 확정된 디자인 기획으로 이미지를 만든다 */
   generateImages(request: AiBlogImageRequest): Promise<AiBlogImageResult>;
 }
 

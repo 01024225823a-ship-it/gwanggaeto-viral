@@ -1,9 +1,21 @@
+/**
+ * [LEGACY] 실사·일러스트 비주얼 파이프라인.
+ *
+ * AI 블로그 **기본** 이미지 제작 경로는 정보 이미지로 대체됐다.
+ *   최종 원고 → InfoVisualPlan (lib/ai-blog/info-visual.ts)
+ *             → SVG/Canvas (render/info-layout.ts) → PNG
+ *
+ * 이 모듈은 기본 경로에서 호출하지 않는다.
+ * 향후 별도 "비주얼 이미지" 기능을 다시 붙일 때를 위해 삭제하지 않고 유지한다.
+ */
+
 import { outlineFromDraft } from "@/lib/ai-blog/article";
 import { playbookOf } from "@/lib/ai-blog/playbooks";
 import { extractSubject, josa, stripParticle } from "@/lib/ai-blog/subject";
 import type {
   AiBlogImageType,
   AiBlogOutline,
+  ArticleVisualPlan,
   CardNewsPlan,
   InfographicPlan,
   ThumbnailPlan,
@@ -291,6 +303,41 @@ function cardNewsIdeas(c: MockContext, cardCount: number): CardNewsPlan[] {
   ];
 }
 
+/**
+ * 본문 비주얼 기획 — 소제목마다 하나씩, 상황·분위기 중심으로.
+ * 정보를 나열하지 않으므로 원고 문장과 겹칠 일이 거의 없다.
+ */
+function articleIdeas(c: MockContext, count: number): ArticleVisualPlan[] {
+  const { outline, subject, target, field } = c;
+  const headings = outline.headings.length > 0 ? outline.headings : [c.subject];
+
+  const scenes = [
+    { purpose: "본문 이해 보조", scene: "일상 속에서 관련 상황을 마주하는 장면", mood: "밝고 현실적인 정보 콘텐츠" },
+    { purpose: "개념 이해 보조", scene: "핵심 개념을 단순화해 보여주는 정보 일러스트", mood: "차분하고 정돈된 설명 톤" },
+    { purpose: "확인 행동 보조", scene: "표시사항이나 자료를 직접 확인하는 장면", mood: "실용적이고 구체적인 분위기" },
+    { purpose: "생활 관리 보조", scene: "평소 생활에서 관리하는 모습", mood: "따뜻하고 편안한 일상 톤" },
+    { purpose: "판단 보조", scene: "선택지를 비교해 보는 장면", mood: "명료하고 담백한 분위기" },
+  ];
+
+  return Array.from({ length: count }, (_, i) => {
+    const preset = scenes[i % scenes.length];
+    return {
+      id: `article-${i + 1}`,
+      type: "article" as const,
+      concept: `본문 비주얼 ${i + 1}`,
+      goal: `${headings[i % headings.length]} 문단의 이해를 돕는다`,
+      avoidOverlap: ["원고 문장을 이미지에 넣지 않음", "정보 나열 금지"],
+      afterHeading: headings[i % headings.length],
+      purpose: preset.purpose,
+      subject: `${target}을 떠올리게 하는 ${field} 상황`,
+      scene: preset.scene,
+      mood: preset.mood,
+      visualDirection: `${subject}와 연결되는 단순한 일러스트, 사람 얼굴 클로즈업과 제품 패키지는 제외`,
+      textOverlay: undefined,
+    };
+  });
+}
+
 function thumbnailIdeas(c: MockContext): ThumbnailPlan[] {
   const { subject, target, field } = c;
   const avoid = ["본문 문장 복사 금지", "설명 문장 나열 금지"];
@@ -344,6 +391,7 @@ function resolveOverlap(plan: VisualPlan, duplicates: Set<string>): VisualPlan {
       footer: duplicates.has(plan.footer) ? shrink(plan.footer) : plan.footer,
     };
   }
+  if (plan.type === "article") return plan;
   if (plan.type === "cardnews") {
     return {
       ...plan,
@@ -377,6 +425,7 @@ export function planVisualsWithMock(request: VisualPlanRequest): VisualPlanResul
     infographic: infographicIdeas(context),
     cardnews: cardNewsIdeas(context, request.cardCount),
     thumbnail: thumbnailIdeas(context),
+    article: articleIdeas(context, Math.max(1, request.articleCount)),
   };
 
   // 이미 본 기획안은 제외한다 ("다른 아이디어 추천")

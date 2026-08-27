@@ -87,6 +87,16 @@ function splitNotes(text: string): string[] {
     .filter((line) => line.length >= 2);
 }
 
+/**
+ * "표를 넣어주세요" 같은 요청만 잡는다.
+ *
+ * 단순히 /표/ 로 검사하면 "광고성 **표**현", "목표", "대표", "표시" 처럼
+ * 전혀 다른 단어에 걸려 표가 항상 강제된다.
+ * 그래서 앞에 한글이 붙지 않고 뒤에 조사·공백·문장부호가 오는 "표"만 인정한다.
+ * (도표·정리표·비교표는 그대로 통과시킨다)
+ */
+const TABLE_REQUEST = /도표|정리표|비교표|(?:^|[^가-힣])표(?:[를은이가와과로도만]|\s|,|\.|$)/;
+
 export function parseConstraints(requestNotes: string): AiBlogConstraints {
   const raw = requestNotes.trim();
   if (!raw) return EMPTY;
@@ -104,7 +114,7 @@ export function parseConstraints(requestNotes: string): AiBlogConstraints {
     noAds: /광고|홍보|판매\s*글|영업/.test(raw),
     professional: /전문|근거|신뢰|정확|객관/.test(raw),
     simple: /쉽게|쉬운|풀어|초보|어렵지/.test(raw),
-    includeTable: /표|도표|정리표/.test(raw),
+    includeTable: TABLE_REQUEST.test(raw),
     includeChecklist: /체크리스트|체크 ?리스트|점검/.test(raw),
     includeFaq: /FAQ|faq|자주 묻는|질문/.test(raw),
     brands,

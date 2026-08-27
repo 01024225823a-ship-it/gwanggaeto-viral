@@ -1,3 +1,4 @@
+import { defaultRatio } from "@/lib/ai-blog/visual-design";
 import type {
   AiBlogArticleType,
   AiBlogAspectRatio,
@@ -55,9 +56,34 @@ export const AI_BLOG_PURPOSES: Option<AiBlogPurpose>[] = [
 export const AI_BLOG_ARTICLE_TYPES: Option<AiBlogArticleType>[] = [
   { id: "expert", label: "전문 정보형", description: "기준과 근거를 정리해 설명합니다." },
   { id: "review", label: "후기형", description: "직접 겪은 것처럼 경험을 풀어냅니다." },
+  {
+    id: "monologue",
+    label: "1인칭 독백형",
+    description: "내가 알아보고 판단한 과정을 자연스럽게 풀어가는 글",
+  },
   { id: "compare", label: "비교형", description: "선택지를 항목별로 비교합니다." },
   { id: "qna", label: "Q&A형", description: "질문과 답변으로 구성합니다." },
 ];
+
+/**
+ * 1인칭 독백형 예시 — STEP 1 "예시 보기"에서 그대로 보여준다.
+ *
+ * 이 유형이 후기형과 어떻게 다른지(사용 후기가 아니라 탐색·판단 과정)를
+ * 설명 문구보다 예시로 보여주는 편이 빠르다.
+ */
+export const MONOLOGUE_EXAMPLE = `관절 영양제를 알아보다 보면 생각보다 선택하기가 어렵다.
+
+종류도 많고 제품마다 설명도 비슷하다 보니 결국 하나씩 비교하게 된다.
+
+그러다 알게 된 제품이 ○○였다.
+
+처음에는 왜 이런 구성이 들어갔을까 싶었는데, 하나씩 살펴보니 나름의 이유가 있었다.
+
+생각해보면 50~60대부터는 관절 하나만 챙기는 경우가 별로 없다.
+
+그래서 오히려 이런 구성이 괜찮아 보였다.
+
+내가 이 제품을 관심 있게 본 이유도 결국 이 부분이었다.`;
 
 /** 자주 쓰는 분량 프리셋 (직접 입력도 가능) */
 export const AI_BLOG_LENGTH_PRESETS = [1_500, 2_000, 3_000];
@@ -103,27 +129,33 @@ export interface ImageTypeOption {
 
 export const AI_BLOG_IMAGE_TYPES: ImageTypeOption[] = [
   {
-    id: "infographic",
-    label: "핵심 요약 인포그래픽",
-    description: "원고의 핵심 내용을 한 장으로 요약합니다.",
-    ratio: "9:16",
-    ratioLabel: "세로형",
-    composition: ["제목", "핵심 포인트 3~5개", "체크리스트", "하단 참고 문구"],
-  },
-  {
-    id: "cardnews",
-    label: "정보 카드뉴스",
-    description: "주요 내용을 여러 장의 카드로 나눠 담습니다.",
-    ratio: "1:1",
-    ratioLabel: "정사각형",
-    composition: ["표지", "주제 소개", "핵심 정보", "체크리스트", "FAQ · 마무리"],
-  },
-  {
     id: "thumbnail",
     label: "블로그 대표 이미지",
     description: "블로그 상단에 쓰는 제목 중심 썸네일입니다.",
     ratioLabel: "1:1 또는 4:3",
-    composition: ["제목 3줄", "보조 문구", "분야 표시"],
+    composition: ["제목", "보조 문구", "대표 비주얼"],
+  },
+  {
+    id: "article",
+    label: "본문 비주얼 이미지",
+    description: "본문 중간에 넣어 상황과 분위기를 보여줍니다.",
+    ratioLabel: "4:3 또는 16:9",
+    composition: ["상황 일러스트", "텍스트 최소", "삽입 위치 추천"],
+  },
+  {
+    id: "infographic",
+    label: "핵심 요약 인포그래픽",
+    description: "판단 기준을 한 장으로 정리합니다.",
+    ratioLabel: "세로형",
+    composition: ["핵심 질문", "판단 기준 4~5개", "시각 구조"],
+  },
+  {
+    id: "cardnews",
+    label: "정보 카드뉴스",
+    description: "장마다 다른 구성으로 이야기를 풀어냅니다.",
+    ratio: "1:1",
+    ratioLabel: "정사각형",
+    composition: ["표지", "핵심 정보", "체크리스트", "정리"],
   },
 ];
 
@@ -183,9 +215,12 @@ export function visualTypeLabel(id: VisualType): string {
   return VISUAL_TYPE_LABEL[id] ?? "";
 }
 
-/** 이미지 타입별 비율 — 썸네일만 사용자가 고른 값을 쓴다 */
-export function imageRatioOf(type: AiBlogImageType, thumbnailRatio: AiBlogAspectRatio): AiBlogAspectRatio {
-  return AI_BLOG_IMAGE_TYPES.find((t) => t.id === type)?.ratio ?? thumbnailRatio;
+/** 이미지 타입별 비율 — 사용자가 고른 값이 있으면 그 값을 쓴다 */
+export function imageRatioOf(
+  type: AiBlogImageType,
+  ratios?: Partial<Record<AiBlogImageType, AiBlogAspectRatio>>,
+): AiBlogAspectRatio {
+  return ratios?.[type] ?? defaultRatio(type);
 }
 
 /** 이 분야는 발행 전 사실 확인 안내를 강조한다 */

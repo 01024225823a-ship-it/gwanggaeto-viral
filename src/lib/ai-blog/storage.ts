@@ -114,8 +114,13 @@ export function createAiBlogProject(input: AiBlogInput, userId?: string): AiBlog
     thumbnailRatio: "1:1",
     cardCount: 6,
     visualPlans: [],
-    imagePrompts: [],
+    visualDesigns: [],
     images: [],
+    // 현재 기본 경로 — 정보 이미지
+    infoVisuals: [],
+    infoVisualStyle: "report",
+    infoRatio: "1:1",
+    infoThumbnailRatio: "4:3",
     createdAt: at,
     updatedAt: at,
   };

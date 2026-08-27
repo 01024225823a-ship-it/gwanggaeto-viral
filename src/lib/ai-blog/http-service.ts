@@ -1,6 +1,13 @@
-import { generateMockImages } from "@/lib/ai-blog/mock-images";
 import type { AiBlogService } from "@/lib/ai-blog/service";
-import type { AiBlogArticle, AiBlogDraft, VisualPlanResult } from "@/lib/ai-blog/types";
+import type {
+  AiBlogArticle,
+  AiBlogDraft,
+  AiBlogImageResult,
+  InfoVisualPlanResult,
+  InfoVisualReviseResult,
+  VisualDesignResult,
+  VisualPlanResult,
+} from "@/lib/ai-blog/types";
 import { currentAccountId } from "@/lib/store/session";
 
 /**
@@ -75,6 +82,36 @@ export const httpAiBlogService: AiBlogService = {
     return next;
   },
 
+  async planInfoVisuals(request) {
+    const { result } = await post<{ result: InfoVisualPlanResult }>(
+      "/api/ai-blog/plan-info-visuals",
+      {
+        accountId: requireAccountId(),
+        input: request.input,
+        draft: request.draft,
+        infoCount: request.infoCount,
+        withThumbnail: request.withThumbnail,
+        exclude: request.exclude ?? [],
+      },
+    );
+    return result;
+  },
+
+  async reviseInfoVisual(request) {
+    const { result } = await post<{ result: InfoVisualReviseResult }>(
+      "/api/ai-blog/revise-info-visual",
+      {
+        accountId: requireAccountId(),
+        input: request.input,
+        draft: request.draft,
+        plan: request.plan,
+        instruction: request.instruction,
+        siblingTitles: request.siblingTitles ?? [],
+      },
+    );
+    return result;
+  },
+
   async planVisualContent(request) {
     const { result } = await post<{ result: VisualPlanResult }>("/api/ai-blog/plan-visuals", {
       accountId: requireAccountId(),
@@ -82,13 +119,31 @@ export const httpAiBlogService: AiBlogService = {
       draft: request.draft,
       types: request.types,
       cardCount: request.cardCount,
+      articleCount: request.articleCount,
       exclude: request.exclude ?? [],
     });
     return result;
   },
 
-  // 이미지 생성은 아직 API 를 붙이지 않았다 — 기획안을 그대로 미리보기로 렌더링한다
-  generateImages(request) {
-    return generateMockImages(request);
+  async designVisualContent(request) {
+    const { result } = await post<{ result: VisualDesignResult }>("/api/ai-blog/design-visuals", {
+      accountId: requireAccountId(),
+      input: request.input,
+      plans: request.plans,
+      style: request.style,
+      ratios: request.ratios,
+      excludeLayouts: request.excludeLayouts ?? [],
+      instruction: request.instruction,
+    });
+    return result;
+  },
+
+  async generateImages(request) {
+    // 어떤 Provider(mock|real)를 쓸지는 서버가 정한다
+    const { result } = await post<{ result: AiBlogImageResult }>("/api/ai-blog/generate-images", {
+      accountId: requireAccountId(),
+      designs: request.designs,
+    });
+    return result;
   },
 };

@@ -10,6 +10,9 @@
 
 export type AiBlogProvider = "claude" | "mock";
 
+/** 이미지 생성 Provider — 현재는 mock 만 구현되어 있다 */
+export type AiImageProvider = "mock" | "real";
+
 /** 기본 모델 — 환경변수로 덮어쓸 수 있다 */
 const DEFAULT_MODEL = "claude-sonnet-5";
 
@@ -22,6 +25,11 @@ export interface AiBlogServerConfig {
   /** low | medium | high | xhigh | max — 미설정이면 API 기본값(high)을 쓴다 */
   effort?: "low" | "medium" | "high" | "xhigh" | "max";
   apiKey?: string;
+  /** 이미지 생성 Provider */
+  imageProvider: AiImageProvider;
+  /** real provider 가 호출할 이미지 생성 엔드포인트 */
+  imageApiUrl?: string;
+  imageApiKey?: string;
   /** 계정당 1분 허용 호출 수 */
   rateLimitPerMinute: number;
 }
@@ -46,6 +54,10 @@ export function readAiBlogConfig(): AiBlogServerConfig {
     model: (process.env.ANTHROPIC_MODEL ?? "").trim() || DEFAULT_MODEL,
     effort: readEffort(),
     apiKey: (process.env.ANTHROPIC_API_KEY ?? "").trim() || undefined,
+    imageProvider:
+      (process.env.AI_IMAGE_PROVIDER ?? "mock").trim().toLowerCase() === "real" ? "real" : "mock",
+    imageApiUrl: (process.env.AI_IMAGE_API_URL ?? "").trim() || undefined,
+    imageApiKey: (process.env.AI_IMAGE_API_KEY ?? "").trim() || undefined,
     rateLimitPerMinute: Number.isFinite(rate) && rate > 0 ? rate : 10,
   };
 }
@@ -61,6 +73,20 @@ export function assertUsableConfig(config: AiBlogServerConfig): void {
   if (config.provider === "claude" && !config.apiKey) {
     throw new AiBlogConfigError(
       "ANTHROPIC_API_KEY 가 설정되지 않았습니다. .env.local 에 키를 넣거나, AI_BLOG_PROVIDER=mock 으로 명시해 데모 모드로 실행하세요.",
+    );
+  }
+}
+
+/**
+ * 이미지 생성 Provider 확인.
+ *
+ * real 은 아직 구현이 없다. 조용히 mock 으로 넘어가면 "실제 이미지가 나오는 줄"
+ * 착각하게 되므로, 설정이 real 이면 명확한 오류를 낸다.
+ */
+export function assertImageProvider(config: AiBlogServerConfig): void {
+  if (config.imageProvider === "real" && !config.imageApiUrl) {
+    throw new AiBlogConfigError(
+      "AI_IMAGE_PROVIDER=real 인데 AI_IMAGE_API_URL 이 없습니다. 이미지 생성 엔드포인트를 설정하거나 AI_IMAGE_PROVIDER=mock 으로 두세요.",
     );
   }
 }

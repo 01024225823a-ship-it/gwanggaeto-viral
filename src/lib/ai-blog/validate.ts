@@ -30,6 +30,15 @@ function countOccurrences(text: string, term: string): number {
   return text.split(term).length - 1;
 }
 
+/**
+ * 키워드 등장 횟수 — 띄어쓰기 차이를 무시한다.
+ * 원고는 "관절 영양제"로 쓰고 키워드는 "관절영양제"로 입력하는 경우가 흔하다.
+ */
+function countKeyword(text: string, term: string): number {
+  const packed = countOccurrences(text.replace(/\s/g, ""), term.replace(/\s/g, ""));
+  return Math.max(countOccurrences(text, term), packed);
+}
+
 function hasAnyTerm(text: string, terms: string[]): boolean {
   return terms.some((term) => text.includes(term));
 }
@@ -55,7 +64,15 @@ export function checkTopicRelevance(draft: AiBlogDraft, input: AiBlogInput): Rel
       message: "제목에 주제나 핵심 키워드가 드러나지 않습니다.",
     });
 
-  const intro = plain.split("\n").slice(0, 3).join(" ");
+  /**
+   * 1인칭 독백형은 주제를 바로 꺼내지 않고 계기(개인적인 상황)로 글을 연다.
+   * 그래서 도입부 판정 범위를 넓게 잡는다 — 이 유형에서는 그것이 정상적인 구성이다.
+   */
+  const monologue = input.articleType === "monologue";
+  const intro = plain
+    .split("\n")
+    .slice(0, monologue ? 8 : 3)
+    .join(" ");
   if (hasAnyTerm(intro, terms)) score += 20;
   else
     issues.push({
@@ -68,7 +85,18 @@ export function checkTopicRelevance(draft: AiBlogDraft, input: AiBlogInput): Rel
   ).length;
   const headingRatio = outline.headings.length > 0 ? headingHits / outline.headings.length : 0;
   score += Math.round(25 * headingRatio);
-  if (outline.headings.length > 0 && headingRatio < 0.5) {
+
+  /**
+   * 1인칭 독백형은 소제목이 목차가 아니라 생각의 흐름이라
+   * ("하나씩 확인해보니", "물론 아쉬운 부분도 있었다") 주제어가 없는 것이 정상이다.
+   * 소제목 대신 본문에서 주제를 다루고 있는지로 대체 판정한다.
+   */
+  if (monologue) {
+    if (headingRatio < 0.5) {
+      const bodyHits = terms.filter((term) => plain.includes(term)).length;
+      score += Math.min(20, bodyHits * 7);
+    }
+  } else if (outline.headings.length > 0 && headingRatio < 0.5) {
     issues.push({
       code: "heading-drift",
       message: "본문 소제목이 주제와 충분히 연결되지 않습니다.",
@@ -83,7 +111,7 @@ export function checkTopicRelevance(draft: AiBlogDraft, input: AiBlogInput): Rel
   score += Math.min(15, vocabularyHits.length * 5);
 
   /* 키워드가 본문에 전혀 없으면 감점 */
-  const missingKeywords = keywordTerms.filter((k) => countOccurrences(plain, k) === 0);
+  const missingKeywords = keywordTerms.filter((k) => countKeyword(plain, k) === 0);
   if (missingKeywords.length > 0) {
     score -= 10;
     issues.push({

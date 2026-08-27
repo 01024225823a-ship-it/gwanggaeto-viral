@@ -3,6 +3,7 @@ import type { AiBlogConstraints } from "@/lib/ai-blog/constraints";
 import { articleTypeLabel, categoryLabel, purposeLabel } from "@/lib/ai-blog/options";
 import type { ResolvedReference } from "@/lib/ai-blog/references";
 import type {
+  AiBlogArticleType,
   AiBlogDraft,
   AiBlogInput,
   AiBlogReviseInstruction,
@@ -86,7 +87,9 @@ function constraintBlock(constraints?: AiBlogConstraints): string {
  * 바뀌지 않아야 프롬프트 캐시가 살아 있고, 사용자 입력은 user 메시지로 분리해야
  * 지시와 데이터의 경계가 분명해진다.
  */
-export function buildSystemPrompt(): string {
+export function buildSystemPrompt(articleType?: AiBlogArticleType): string {
+  if (articleType === "monologue") return buildMonologueSystemPrompt();
+
   return [
     "당신은 네이버 블로그에 발행할 정보성 콘텐츠를 쓰는 전문 한국어 콘텐츠 에디터입니다.",
     "독자가 실제로 판단에 쓸 수 있는 글을 씁니다.",
@@ -112,6 +115,108 @@ export function buildSystemPrompt(): string {
     "[분야 안내 문구]",
     "건강·의료·법률·금융처럼 개인 상황에 따라 결론이 달라지는 분야는",
     "마무리에 전문가 확인을 권하는 안내 문구를 disclaimer 로 덧붙인다.",
+  ].join("\n");
+}
+
+/* ------------------------------------------------------------------ */
+/* 1인칭 독백형 전용 프롬프트                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 1인칭 독백형 시스템 프롬프트.
+ *
+ * 전문 정보형의 "보고서" 프롬프트를 그대로 쓰면 소제목·요약·표가 붙은
+ * 리포트가 나온다. 이 유형은 구조가 아니라 생각의 흐름이 핵심이므로
+ * 원칙 자체를 다르게 준다.
+ *
+ * 가장 조심할 것은 **가짜 후기**다. 사용자가 실제 사용 경험을 주지 않았는데
+ * "먹어보니 좋았다" 류의 체험담이 나오면 이 유형은 실패다.
+ */
+export function buildMonologueSystemPrompt(): string {
+  return [
+    "당신은 한국어 블로그에 1인칭 글을 쓰는 사람입니다.",
+    "이 글은 독자에게 강의하거나 보고하는 글이 아니라,",
+    "작성자가 제품이나 주제를 알아보고 판단한 과정을",
+    "자신의 생각을 정리하듯 자연스럽게 풀어가는 1인칭 글입니다.",
+    "",
+    "[후기형과의 차이 — 반드시 구분할 것]",
+    "후기형   : 실제 사용·경험 → 느낀 점 → 평가",
+    "독백형   : 고민 → 탐색 → 비교 → 의문 → 확인 → 판단 → 선택 이유",
+    "제품을 이미 사용했다는 전제가 없습니다. 사용하지 않아도 쓸 수 있는 글입니다.",
+    "",
+    "[가장 중요한 원칙 — 없는 체험을 만들지 않는다]",
+    "사용자가 실제 섭취·사용 경험을 제공하지 않았다면 체험담을 지어내지 마세요.",
+    "",
+    "쓰면 안 되는 표현",
+    '  "직접 먹어보니 효과가 있었다"',
+    '  "며칠 먹었더니 통증이 줄었다"',
+    '  "확실히 좋아졌다"',
+    "",
+    "쓸 수 있는 표현",
+    '  "구성을 비교해보니 괜찮아 보였다"',
+    '  "개인적으로 이 부분이 눈에 들어왔다"',
+    '  "내가 제품을 비교할 때 보는 기준에는 잘 맞았다"',
+    "",
+    "체감·효과·복용 기간·증상 변화는 사용자가 직접 제공한 경우에만 씁니다.",
+    "",
+    "[문체]",
+    "- 광고주나 전문가가 설명하는 말투가 아니라, 스스로 생각을 정리하는 말투로 씁니다.",
+    "- 짧은 문장과 중간 길이 문장을 섞습니다. 한 문장을 지나치게 길게 만들지 않습니다.",
+    "- 다음 연결 표현을 자연스럽게 씁니다 — 처음에는 / 그런데 / 자세히 보니 / 생각해보면 /",
+    "  그래서 / 오히려 / 개인적으로는 / 물론 / 결국",
+    "  단, 같은 표현을 기계적으로 반복하지 않습니다.",
+    "- '~습니다' 체로 독자에게 설명하지 말고, '~다' 체로 자기 생각을 적습니다.",
+    "",
+    "[글의 흐름 — 참고용이며 그대로 10개 항목으로 나누지 않는다]",
+    "이 주제를 알아보게 된 계기 → 처음 느낀 고민 → 선택지를 비교한 과정 →",
+    "특정 제품·서비스를 알게 된 계기 → 처음 들었던 의문 → 하나씩 확인해 본 내용 →",
+    "내 상황·타깃 관점에서 생각해 본 점 → 장점 또는 선택 기준 →",
+    "과장하지 않는 한계·주의점 → 최종적으로 관심을 갖게 된 이유",
+    "",
+    "정리된 보고서가 아니라 생각이 자연스럽게 이어지는 글이어야 합니다.",
+    "소제목은 3~5개면 충분하고, 번호를 붙이지 않습니다.",
+    "소제목도 목차 제목이 아니라 그 대목의 생각을 담은 짧은 문장으로 씁니다.",
+    "",
+    "[쓰지 않는 형식 — 사용자가 따로 요청한 경우에만 사용]",
+    "핵심 요약 박스 / FAQ / 표 / 체크리스트 / 번호형 소제목 /",
+    "'첫째, 둘째, 셋째' / 논문·리포트 같은 구성",
+    "→ 해당 필드(summary, table, checklist, faqs)는 빈 값으로 두세요.",
+    "",
+    "[정보성은 유지한다]",
+    "독백형이라고 정보가 없어지면 안 됩니다. 왜 그렇게 생각했는지 근거가 있어야 합니다.",
+    "  생각 → 이유 → 정보 → 개인적 판단",
+    "순서로 씁니다. 의문을 던졌으면 이후에 실제 구성·성분·기능 설명으로 답을 줍니다.",
+    "",
+    "[사실 범위]",
+    "- 참고자료가 있으면 사실 정보는 참고자료를 우선합니다.",
+    "- 참고자료에 없는 효능·수치·시험 결과·사용자 경험을 지어내지 않습니다.",
+    "- 개인적인 표현과 객관적인 사실 정보를 문장 안에서 구분합니다.",
+    "",
+    "[제품 언급]",
+    "제품명을 반복해서 넣지 마세요. 처음 소개한 뒤에는",
+    "'이 제품', '이 구성', '이런 방식' 처럼 자연스러운 대체 표현을 씁니다.",
+    "SEO 목적으로 제품명을 기계적으로 반복하지 않습니다.",
+    "",
+    "[분야 안내 문구]",
+    "건강·의료·법률·금융처럼 개인 상황에 따라 결론이 달라지는 분야는",
+    "마무리에 전문가 확인을 권하는 안내 문구를 disclaimer 로 덧붙입니다.",
+  ].join("\n");
+}
+
+/** 독백형일 때 user 메시지에 덧붙이는 지시 */
+function monologueBlock(input: AiBlogInput): string {
+  return [
+    "[10. 원고 유형 상세 — 1인칭 독백형]",
+    "작성자가 이 주제를 알아보고 판단한 과정을 혼잣말하듯 1인칭으로 씁니다.",
+    `타깃(${input.target || "일반 독자"})에게 설명하는 글이 아니라,`,
+    "작성자가 자기 생각을 정리하는 글입니다.",
+    "",
+    "- summary(핵심 요약), table(표), checklist(체크리스트), faqs(FAQ) 는 빈 값으로 두세요.",
+    "  ([1. 추가 요청사항]에서 명시적으로 요청한 경우에만 채웁니다)",
+    "- sections 의 heading 에 번호를 붙이지 않습니다. 소제목은 3~5개로 씁니다.",
+    "- paragraphs 는 문단 중심의 자연스러운 글로 씁니다.",
+    "- 실제 사용·섭취 경험은 위 [1. 추가 요청사항]이나 [3. 참고자료]에 있을 때만 씁니다.",
+    "  없으면 '알아보고 비교한 과정'까지만 쓰고 체감·효과를 지어내지 않습니다.",
   ].join("\n");
 }
 
@@ -149,7 +254,9 @@ export function buildArticlePrompt(input: AiBlogInput, options?: ArticlePromptOp
     `[7. 원고 목적] ${purposeLabel(input.purpose)}`,
     `[8. 원고 유형] ${articleTypeLabel(input.articleType)}`,
     `[9. 목표 분량] 공백 제외 약 ${input.articleLength}자 (±15% 이내)`,
-    structure,
+    // 독백형은 구성안(소제목 목록)을 주면 다시 리포트가 되므로 넣지 않는다
+    input.articleType === "monologue" ? "" : structure,
+    input.articleType === "monologue" ? `\n${monologueBlock(input)}` : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -160,11 +267,15 @@ export function buildArticlePrompt(input: AiBlogInput, options?: ArticlePromptOp
 /* ------------------------------------------------------------------ */
 
 /** 편집기가 쓰는 마크다운 규칙 — 수정 결과도 이 형식을 유지해야 파서가 동작한다 */
-export function markdownFormatSpec(): string {
+export function markdownFormatSpec(articleType?: AiBlogArticleType): string {
+  const monologue = articleType === "monologue";
+
   return [
     "[본문 마크다운 형식 — 반드시 지킬 것]",
     `- 큰 블록 제목은 "## ${BLOCK.summary}", "## ${BLOCK.table}", "## ${BLOCK.checklist}", "## ${BLOCK.faq}", "## ${BLOCK.outro}" 를 사용한다.`,
-    '- 본문 소제목은 "### 1. 소제목" 처럼 ### 와 번호를 쓴다.',
+    monologue
+      ? '- 본문 소제목은 "### 소제목" 처럼 ### 만 쓰고 번호를 붙이지 않는다.'
+      : '- 본문 소제목은 "### 1. 소제목" 처럼 ### 와 번호를 쓴다.',
     '- 목록은 "- 내용", 체크리스트는 "- [ ] 내용" 으로 쓴다.',
     '- 표는 "| 항목 | 내용 |" 형식의 마크다운 표로 쓰고, 두 번째 줄에 "| --- | --- |" 를 넣는다.',
     '- FAQ 는 "**Q. 질문**" 다음 줄에 "A. 답변" 으로 쓴다.',
@@ -173,7 +284,9 @@ export function markdownFormatSpec(): string {
 }
 
 /** 원고 수정 시스템 프롬프트 */
-export function buildReviseSystemPrompt(): string {
+export function buildReviseSystemPrompt(articleType?: AiBlogArticleType): string {
+  const monologue = articleType === "monologue";
+
   return [
     "당신은 한국어 블로그 원고를 다듬는 전문 에디터입니다.",
     "",
@@ -186,8 +299,19 @@ export function buildReviseSystemPrompt(): string {
     "- 주제와 사실관계를 바꾸지 않는다. 새로운 수치나 근거를 지어내지 않는다.",
     "- 광고성 표현을 늘리지 않는다.",
     "- 전체 구조(블록 순서)를 유지한다. 요청이 구조 변경일 때만 바꾼다.",
+    ...(monologue
+      ? [
+          "",
+          "[이 원고는 1인칭 독백형입니다]",
+          "- 작성자가 자기 생각을 정리하는 1인칭 문체를 유지한다. 설명·보고 말투로 바꾸지 않는다.",
+          "- 요약·표·체크리스트·FAQ 블록은 수정 요청에 명시된 경우에만 추가한다.",
+          "- 실제 사용·섭취 경험이 원문에 없으면 새로 만들지 않는다.",
+          "  체감·효과·복용 기간·증상 변화를 덧붙이지 않는다.",
+          "- 제품명을 늘려 반복하지 않는다.",
+        ]
+      : []),
     "",
-    markdownFormatSpec(),
+    markdownFormatSpec(articleType),
   ].join("\n");
 }
 

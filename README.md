@@ -124,6 +124,51 @@ src/
 |---|---|
 | `POST /api/ai-blog/generate` | 입력값으로 원고 생성 |
 | `POST /api/ai-blog/revise` | 현재 원고를 요청에 맞게 수정 |
+| `POST /api/ai-blog/plan-info-visuals` | 원고 분석 → 정보 이미지 기획 (세트 전체) |
+| `POST /api/ai-blog/revise-info-visual` | 이미지 한 장의 기획만 수정 |
+| `POST /api/ai-blog/plan-visuals` | [LEGACY] 원고 분석 → 비주얼 콘텐츠 기획 |
+| `POST /api/ai-blog/design-visuals` | [LEGACY] 콘텐츠 기획 → 디자인 기획 |
+
+### 원고 유형
+
+전문 정보형 / 후기형 / **1인칭 독백형** / 비교형 / Q&A형 다섯 가지입니다.
+
+**1인칭 독백형**은 후기형과 다릅니다.
+
+| | 흐름 | 사용 경험 |
+|---|---|---|
+| 후기형 | 사용·경험 → 느낀 점 → 평가 | 필요 |
+| 1인칭 독백형 | 고민 → 탐색 → 비교 → 의문 → 확인 → 판단 → 선택 이유 | 없어도 됨 |
+
+이 유형만 프롬프트·응답 스키마가 분기합니다 (`buildMonologueSystemPrompt` / `MonologueArticleSchema`).
+핵심 요약·표·체크리스트·FAQ·번호형 소제목을 쓰지 않고 문단 중심으로 씁니다
+(추가 요청사항에 명시하면 그때만 넣습니다).
+
+사용자가 실제 섭취·사용 경험을 주지 않았는데 "먹어보니 좋았다" 같은 체험담이 나오면 안 됩니다.
+프롬프트에서 금지하고, `toArticle` 에서 형식을 한 번 더 걸러냅니다.
+
+### 이미지 = 정보 시각화
+
+실사 이미지나 AI 일러스트를 만들지 않습니다. 원고를 분석해 **본문에 넣을 정보 카드·도표**를 만듭니다.
+
+```
+최종 원고 → Claude(시각화할 정보 추출·재구성) → InfoVisualPlan → SVG/Canvas → PNG
+```
+
+이미지 생성 API 를 호출하지 않으므로 기획을 받으면 브라우저에서 바로 그려집니다.
+한글은 웹폰트로 직접 그리기 때문에 글자가 깨지지 않습니다.
+
+- **유형 7종** — 대표 이미지(`thumbnail`) + 정보 이미지 6종
+  (`summary` 핵심 요약 · `checklist` 체크리스트 · `process` 단계 · `comparison` 비교 · `table` 표·기준 · `number` 숫자 강조)
+- **스타일 4종** — 전문 리포트 / 깔끔한 정보형 / 프리미엄 / 친근한 정보형.
+  레이아웃은 정보 유형이 정하고, 스타일은 색·여백·타이포·테두리만 바꿉니다.
+- **장수** — 대표 1장 + 정보 2~6장 (2,000자 기준 5장). 시각화할 재료가 부족하면 적게 추천합니다.
+- **비율** — 정보 이미지 1080×1080 / 1080×1350 / 1080×1600 / 1080×1920, 대표 1200×900 또는 1080×1080
+- 결과 화면은 **대표 이미지 / 정보 이미지** 두 그룹으로만 나누고, 개별·전체(ZIP) 다운로드를 제공합니다.
+- 미리보기(SVG)와 다운로드(PNG)가 같은 장면 데이터(`render/info-layout.ts`)를 그리므로 화면과 저장 파일이 일치합니다.
+
+원고 문장을 이미지에 그대로 복사하지 않도록, 기획 결과를 원고와 대조해
+겹치면(`visual-overlap.ts`) 한 번 더 재기획을 요청합니다.
 
 ### 환경변수
 
@@ -136,6 +181,7 @@ src/
 | `ANTHROPIC_MODEL` | | `claude-sonnet-5` | 사용할 모델 |
 | `AI_BLOG_EFFORT` | | (미설정) | `low`\|`medium`\|`high`\|`xhigh`\|`max` — 응답이 느리면 낮춘다 |
 | `AI_BLOG_RATE_LIMIT_PER_MINUTE` | | `10` | 계정당 분당 호출 수 |
+| `AI_IMAGE_PROVIDER` | | `mock` | [LEGACY] 비주얼 파이프라인 전용. 정보 이미지는 이 값을 쓰지 않습니다 |
 
 `AI_BLOG_PROVIDER=claude` 인데 키가 없으면 **조용히 Mock 으로 넘어가지 않고** 설정 오류를 돌려줍니다.
 오프라인 개발이나 장애 대응 시에는 `AI_BLOG_PROVIDER=mock` 을 명시하세요.
@@ -148,13 +194,24 @@ Vercel 에서는 Project → Settings → Environment Variables 에 같은 이�
 - Mock 구현: `lib/ai-blog/mock-service.ts` (삭제하지 않고 유지)
 - 선택 로직: `lib/ai-blog/server/resolve-service.ts`
 - 호출 자격·사용량 제한: `lib/ai-blog/server/guard.ts` (실제 인증 도입 시 이 파일만 교체)
-- 이미지 생성은 아직 Mock 입니다 (`lib/ai-blog/mock-images.ts`).
+- 정보 이미지 카탈로그(유형·스타일·비율·장수): `lib/ai-blog/info-visual.ts`
+- 정보 추출 프롬프트: `lib/ai-blog/info-visual-prompts.ts`
+- 정보 이미지 렌더러: `lib/ai-blog/render/info-layout.ts` · 디자인 토큰 `render/info-theme.ts`
+- 정보 이미지 Mock: `lib/ai-blog/mock-info-visual-planner.ts`
+
+**[LEGACY] 실사·일러스트 비주얼 파이프라인** — 기본 경로에서는 호출하지 않지만,
+향후 별도 비주얼 이미지 기능을 위해 코드를 남겨 뒀습니다. (해당 파일 상단에 `[LEGACY]` 표시)
+
+- 파이프라인: 원고 → `VisualPlan`(콘텐츠 디렉터) → `VisualDesignPlan`(아트 디렉터) → `ImageProvider`
+- 이미지 생성 Provider: `lib/ai-blog/image-provider.ts` (현재 mock 만 구현)
+- 레이아웃·아트디렉션 기준표: `lib/ai-blog/visual-design.ts` (비율·해상도표는 현재 경로도 공유)
+- 장면 렌더러: `lib/ai-blog/render/layout.ts` · `render/artwork.ts`
 
 ## 다음 단계
 
 - 서버/DB 연동 및 실제 인증 (AI 라우트의 `requireCustomer` 교체 포함)
 - 참고자료 URL 본문 추출 (현재는 주소만 저장)
-- 이미지 생성 API 연동
+- (선택) 별도 비주얼 이미지 기능 — 남겨 둔 [LEGACY] 파이프라인에 이미지 생성 API 연결
 - PG 결제 연동 (포인트 충전)
 - 일부 상품의 외부 API·자동화 연동
 - 알림(이메일/카카오) 발송

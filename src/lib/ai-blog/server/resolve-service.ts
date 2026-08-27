@@ -1,7 +1,9 @@
+import { mockImageProvider, setImageProvider } from "@/lib/ai-blog/image-provider";
 import { mockAiBlogService } from "@/lib/ai-blog/mock-service";
 import type { AiBlogService } from "@/lib/ai-blog/service";
 import { createClaudeAiBlogService } from "@/lib/ai-blog/server/claude-service";
-import { assertUsableConfig, readAiBlogConfig } from "@/lib/ai-blog/server/config";
+import { createRealImageProvider } from "@/lib/ai-blog/server/real-image-provider";
+import { assertImageProvider, assertUsableConfig, readAiBlogConfig } from "@/lib/ai-blog/server/config";
 import type { AiBlogServerConfig } from "@/lib/ai-blog/server/config";
 
 /**
@@ -19,6 +21,12 @@ export function resolveAiBlogService(): {
 } {
   const config = readAiBlogConfig();
   assertUsableConfig(config);
+  assertImageProvider(config);
+
+  // 이미지 생성 Provider 도 설정에 맞춰 갈아 끼운다
+  setImageProvider(
+    config.imageProvider === "real" ? createRealImageProvider(config) : mockImageProvider,
+  );
 
   const service =
     config.provider === "mock" ? mockAiBlogService : createClaudeAiBlogService(config);

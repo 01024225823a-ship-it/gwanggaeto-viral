@@ -2,14 +2,14 @@ import { NextResponse } from "next/server";
 import { mapError } from "@/lib/ai-blog/server/errors";
 import { checkRateLimit, recordUsage, requireCustomer } from "@/lib/ai-blog/server/guard";
 import { resolveAiBlogService } from "@/lib/ai-blog/server/resolve-service";
-import { PlanVisualsBodySchema } from "@/lib/ai-blog/server/schema";
+import { ReviseInfoVisualBodySchema } from "@/lib/ai-blog/server/schema";
 
 /**
- * POST /api/ai-blog/plan-visuals — 이미지 콘텐츠 기획.
+ * POST /api/ai-blog/revise-info-visual — 정보 이미지 한 장만 수정.
  *
- * 최종 원고를 분석해 "이미지로 만들 관점"을 유형별로 3개씩 제안한다.
- * 이미지 제작은 여기서 나온 기획안만 사용하므로, 원고 문장이 이미지로
- * 그대로 옮겨가는 일이 구조적으로 생기지 않는다.
+ * 결과 화면의 "수정 요청"·"다시 만들기"가 이 라우트를 쓴다.
+ * 요청받은 이미지의 InfoVisualPlan 만 새로 만들어 돌려주므로
+ * 다른 이미지에는 영향이 없다. (요구사항 15)
  */
 
 export const runtime = "nodejs";
@@ -19,19 +19,18 @@ export async function POST(request: Request) {
   try {
     const { service, config } = resolveAiBlogService();
 
-    const body = PlanVisualsBodySchema.parse(await request.json());
+    const body = ReviseInfoVisualBodySchema.parse(await request.json());
 
     const account = requireCustomer(body.accountId);
     checkRateLimit(account.id, config.rateLimitPerMinute);
-    recordUsage(account, "plan-visuals");
+    recordUsage(account, "revise-info-visual");
 
-    const result = await service.planVisualContent({
+    const result = await service.reviseInfoVisual({
       draft: body.draft,
       input: body.input,
-      types: body.types,
-      cardCount: body.cardCount,
-      articleCount: body.articleCount,
-      exclude: body.exclude,
+      plan: body.plan,
+      instruction: body.instruction,
+      siblingTitles: body.siblingTitles,
     });
 
     return NextResponse.json({ result, mode: service.mode });

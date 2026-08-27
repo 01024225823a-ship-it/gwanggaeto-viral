@@ -1,3 +1,14 @@
+/**
+ * [LEGACY] 실사·일러스트 비주얼 파이프라인.
+ *
+ * AI 블로그 **기본** 이미지 제작 경로는 정보 이미지로 대체됐다.
+ *   최종 원고 → InfoVisualPlan (lib/ai-blog/info-visual.ts)
+ *             → SVG/Canvas (render/info-layout.ts) → PNG
+ *
+ * 이 모듈은 기본 경로에서 호출하지 않는다.
+ * 향후 별도 "비주얼 이미지" 기능을 다시 붙일 때를 위해 삭제하지 않고 유지한다.
+ */
+
 import type Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import * as z from "zod";
@@ -5,6 +16,7 @@ import type { AiBlogServerConfig } from "@/lib/ai-blog/server/config";
 import { AiBlogGenerationError } from "@/lib/ai-blog/server/errors";
 import type {
   AiBlogImageType,
+  ArticleVisualPlan,
   CardNewsPlan,
   InfographicPlan,
   ThumbnailPlan,
@@ -81,29 +93,40 @@ const ThumbnailIdeaSchema = z.object({
   subheadline: z.string().describe("보조 문구 한 줄. 20자 내외."),
 });
 
+const ArticleIdeaSchema = z.object({
+  ...BaseFields,
+  afterHeading: z.string().describe("이 이미지를 넣을 원고 소제목. 원고에 있는 소제목 중 하나."),
+  purpose: z.string().describe("이 이미지가 하는 일. 한 줄."),
+  subject: z.string().describe("무엇을 그릴지. 한국어로 구체적으로."),
+  scene: z.string().describe("어떤 장면인지. 한 줄."),
+  mood: z.string().describe("분위기. 한 줄."),
+  visualDirection: z.string().describe("그림 방향 한 줄. 사람 얼굴 클로즈업·제품 패키지 제외."),
+  textOverlay: z.string().describe("이미지 위에 얹을 짧은 문구. 보통 빈 문자열."),
+});
+
 const IdeaSchemaByType = {
   infographic: z.object({ ideas: z.array(InfographicIdeaSchema) }),
   cardnews: z.object({ ideas: z.array(CardNewsIdeaSchema) }),
   thumbnail: z.object({ ideas: z.array(ThumbnailIdeaSchema) }),
+  article: z.object({ ideas: z.array(ArticleIdeaSchema) }),
 } as const;
 
 /* ------------------------------------------------------------------ */
 /* 변환                                                                 */
 /* ------------------------------------------------------------------ */
 
-type IdeaOf<T extends AiBlogImageType> = z.infer<(typeof IdeaSchemaByType)[T]>["ideas"][number];
-
-function toPlan<T extends AiBlogImageType>(
-  type: T,
-  idea: IdeaOf<T>,
+function toPlan(
+  type: AiBlogImageType,
+  idea: unknown,
   index: number,
   cardCount: number,
 ): VisualPlan {
+  const raw = idea as { concept: string; goal: string; avoidOverlap: string[] };
   const base = {
     id: `${type}-${index + 1}`,
-    concept: idea.concept.trim(),
-    goal: idea.goal.trim(),
-    avoidOverlap: idea.avoidOverlap,
+    concept: raw.concept.trim(),
+    goal: raw.goal.trim(),
+    avoidOverlap: raw.avoidOverlap,
   };
 
   if (type === "infographic") {
@@ -128,14 +151,28 @@ function toPlan<T extends AiBlogImageType>(
     const plan: CardNewsPlan = {
       ...base,
       type: "cardnews",
-      cards: it.cards
-        .slice(0, cardCount)
-        .map((card, i) => ({
-          page: i + 1,
-          headline: card.headline.trim(),
-          body: card.body.trim(),
-          visualDirection: card.visualDirection.trim(),
-        })),
+      cards: it.cards.slice(0, cardCount).map((card, i) => ({
+        page: i + 1,
+        headline: card.headline.trim(),
+        body: card.body.trim(),
+        visualDirection: card.visualDirection.trim(),
+      })),
+    };
+    return plan;
+  }
+
+  if (type === "article") {
+    const it = idea as z.infer<typeof ArticleIdeaSchema>;
+    const plan: ArticleVisualPlan = {
+      ...base,
+      type: "article",
+      afterHeading: it.afterHeading.trim(),
+      purpose: it.purpose.trim(),
+      subject: it.subject.trim(),
+      scene: it.scene.trim(),
+      mood: it.mood.trim(),
+      visualDirection: it.visualDirection.trim(),
+      textOverlay: it.textOverlay.trim() || undefined,
     };
     return plan;
   }
@@ -183,9 +220,9 @@ export async function planVisualsWithClaude(
     const parsed = message.parsed_output;
     if (!parsed || parsed.ideas.length === 0) return [];
 
-    return parsed.ideas
-      .slice(0, VISUAL_IDEA_COUNT)
-      .map((idea, i) => toPlan(type, idea as IdeaOf<typeof type>, i, request.cardCount));
+    // 본문 비주얼은 "요청한 장수"만큼 그대로 쓴다 (고르는 대상이 아니다)
+    const limit = type === "article" ? request.articleCount : VISUAL_IDEA_COUNT;
+    return parsed.ideas.slice(0, limit).map((idea, i) => toPlan(type, idea, i, request.cardCount));
   }
 
   async function planAll(extraNote: string): Promise<VisualPlanSet> {

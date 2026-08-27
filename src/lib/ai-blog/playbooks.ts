@@ -1202,6 +1202,8 @@ export const TYPE_SECTION_ORDER: Record<AiBlogArticleType, SectionRole[]> = {
   expert: ["why", "audience", "practice", "criteria", "detail", "caution", "product"],
   // 계기 → 먼저 한 일 → 기준 → 확인한 내용 → 걸러낸 것
   review: ["why", "practice", "criteria", "detail", "caution", "product"],
+  // 고민 → 비교 기준 → 확인한 내용 → 내 상황 대입 → 한계 → 관심을 갖게 된 이유
+  monologue: ["why", "criteria", "detail", "audience", "caution", "product"],
   // 기준 → 항목별 차이 → 배경 → 상황별 우선순위 → 오해
   compare: ["criteria", "detail", "why", "audience", "caution", "product"],
   // 질문 순서대로
@@ -1221,6 +1223,16 @@ const ROLE_HEADING_BY_TYPE: Record<
     detail: () => "직접 확인해 본 내용",
     caution: () => "알아보면서 걸러낸 것들",
     product: () => "참고한 예시",
+  },
+  // 1인칭 독백형 — 목차 제목이 아니라 그 대목의 생각을 담은 문장으로 쓴다
+  monologue: {
+    why: (c) => `${josa(c.subject, "을를")} 알아보게 된 이유`,
+    audience: (c) => `${c.target} 입장에서 다시 생각해보니`,
+    practice: () => "그전에 먼저 정리해둔 것",
+    criteria: () => "무엇을 보고 판단할지부터 정했다",
+    detail: () => "하나씩 확인해보니",
+    caution: () => "물론 아쉬운 부분도 있었다",
+    product: () => "내가 관심 있게 본 이유",
   },
   compare: {
     why: (c) => `${josa(c.subject, "을를")} 비교하게 되는 배경`,
